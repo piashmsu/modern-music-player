@@ -69,6 +69,13 @@ data class AppPrefs(
     val karaokeMode: Boolean = false,
     val genreEqMap: Map<String, String> = emptyMap(), // genre -> preset name
     val autoRadio: Boolean = false, // queue related YouTube songs after current
+    // Final batch
+    val appLockPin: String = "", // empty = no app-launch PIN
+    val shakeToSkip: Boolean = false,
+    val sleepEndOfSong: Boolean = false, // pause after current song ends
+    val spatialWide: Boolean = false, // wide stereo / surround feel
+    val prefetchEnabled: Boolean = true, // pre-resolve next YT stream
+    val voiceSearchEnabled: Boolean = true,
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -126,6 +133,12 @@ class PreferencesRepository(private val context: Context) {
         val KARAOKE = booleanPreferencesKey("karaoke")
         val GENRE_EQ = stringPreferencesKey("genre_eq") // JSON map
         val AUTO_RADIO = booleanPreferencesKey("auto_radio")
+        val APP_LOCK_PIN = stringPreferencesKey("app_lock_pin")
+        val SHAKE_SKIP = booleanPreferencesKey("shake_skip")
+        val SLEEP_EOS = booleanPreferencesKey("sleep_eos")
+        val SPATIAL_WIDE = booleanPreferencesKey("spatial_wide")
+        val PREFETCH = booleanPreferencesKey("prefetch")
+        val VOICE_SEARCH = booleanPreferencesKey("voice_search")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -186,8 +199,21 @@ class PreferencesRepository(private val context: Context) {
             karaokeMode = this[K.KARAOKE] ?: false,
             genreEqMap = decodeStringMap(this[K.GENRE_EQ]),
             autoRadio = this[K.AUTO_RADIO] ?: false,
+            appLockPin = this[K.APP_LOCK_PIN] ?: "",
+            shakeToSkip = this[K.SHAKE_SKIP] ?: false,
+            sleepEndOfSong = this[K.SLEEP_EOS] ?: false,
+            spatialWide = this[K.SPATIAL_WIDE] ?: false,
+            prefetchEnabled = this[K.PREFETCH] ?: true,
+            voiceSearchEnabled = this[K.VOICE_SEARCH] ?: true,
         )
     }
+
+    suspend fun setAppLockPin(pin: String) = context.dataStore.edit { it[K.APP_LOCK_PIN] = pin }
+    suspend fun setShakeToSkip(v: Boolean) = context.dataStore.edit { it[K.SHAKE_SKIP] = v }
+    suspend fun setSleepEndOfSong(v: Boolean) = context.dataStore.edit { it[K.SLEEP_EOS] = v }
+    suspend fun setSpatialWide(v: Boolean) = context.dataStore.edit { it[K.SPATIAL_WIDE] = v }
+    suspend fun setPrefetch(v: Boolean) = context.dataStore.edit { it[K.PREFETCH] = v }
+    suspend fun setVoiceSearch(v: Boolean) = context.dataStore.edit { it[K.VOICE_SEARCH] = v }
 
     suspend fun setAutoRadio(v: Boolean) = context.dataStore.edit { it[K.AUTO_RADIO] = v }
 

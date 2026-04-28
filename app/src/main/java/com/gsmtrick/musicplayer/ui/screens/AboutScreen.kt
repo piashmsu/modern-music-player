@@ -63,7 +63,7 @@ private const val FB_URL = "https://www.fb.com/piashmsuf"
 private const val GITHUB_URL = "https://github.com/piashmsu/modern-music-player"
 private const val ISSUE_URL = "https://github.com/piashmsu/modern-music-player/issues/new"
 private const val EMAIL = "piashmsu@gmail.com"
-private const val APP_VERSION = "2.0"
+private const val APP_VERSION = "3.0"
 
 @Composable
 fun AboutScreen() {

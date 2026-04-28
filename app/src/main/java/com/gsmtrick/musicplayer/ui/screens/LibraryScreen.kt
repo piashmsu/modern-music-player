@@ -308,6 +308,7 @@ private fun SongList(
         }
         return
     }
+    var actionsFor by remember { mutableStateOf<Song?>(null) }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         items(songs, key = { it.id }) { song ->
             SongRow(
@@ -316,8 +317,12 @@ private fun SongList(
                 isFavorite = song.id.toString() in favorites,
                 onClick = { viewModel.playSong(song, songs) },
                 onToggleFavorite = { viewModel.toggleFavorite(song.id) },
+                onLongClick = { actionsFor = song },
             )
         }
+    }
+    actionsFor?.let { song ->
+        SongActionsDialog(song = song, onDismiss = { actionsFor = null })
     }
 }
 
@@ -717,17 +722,19 @@ private fun SongDetailDialog(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun SongRow(
     song: Song,
     isCurrent: Boolean,
     isFavorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onLongClick: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

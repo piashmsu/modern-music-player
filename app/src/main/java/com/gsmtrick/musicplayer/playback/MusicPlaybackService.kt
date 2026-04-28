@@ -123,7 +123,7 @@ class MusicPlaybackService : MediaSessionService() {
         scope.launch {
             prefs.prefs.collectLatest { p ->
                 effects.apply(p.effects)
-                applyChannelMix(p.effects, karaoke = p.karaokeMode)
+                applyChannelMix(p.effects, karaoke = p.karaokeMode, spatialWide = p.spatialWide)
                 globalSpeed = p.playbackSpeed.coerceIn(0.5f, 2f)
                 pitchSemitones = p.effects.pitchSemitones
                 perSongSpeed = p.perSongSpeed
@@ -159,7 +159,11 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun applyChannelMix(state: EffectsState, karaoke: Boolean = false) {
+    private fun applyChannelMix(
+        state: EffectsState,
+        karaoke: Boolean = false,
+        spatialWide: Boolean = false,
+    ) {
         val balance = state.balance.coerceIn(-1f, 1f)
         val leftGain: Float
         val rightGain: Float
@@ -191,6 +195,12 @@ class MusicPlaybackService : MediaSessionService() {
             state.monoMode == "reverse" -> floatArrayOf(
                 0f, 1f,
                 1f, 0f,
+            )
+            // Spatial wide: emphasises stereo difference (L = 1.3·L − 0.3·R,
+            // R = 1.3·R − 0.3·L), which broadens the stereo image.
+            spatialWide -> floatArrayOf(
+                1.3f * leftGain, -0.3f * leftGain,
+                -0.3f * rightGain, 1.3f * rightGain,
             )
             else -> floatArrayOf(
                 leftGain, 0f,

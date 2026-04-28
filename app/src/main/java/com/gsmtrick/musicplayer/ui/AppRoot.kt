@@ -36,11 +36,16 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.gsmtrick.musicplayer.playback.MusicPlaybackService
 import com.gsmtrick.musicplayer.ui.screens.AboutScreen
+import com.gsmtrick.musicplayer.ui.screens.AppLockScreen
 import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
 import com.gsmtrick.musicplayer.ui.screens.SettingsScreen
+import com.gsmtrick.musicplayer.ui.screens.StatsScreen
 import com.gsmtrick.musicplayer.ui.screens.YoutubeScreen
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.gsmtrick.musicplayer.ui.theme.ModernMusicTheme
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -79,6 +84,14 @@ fun AppRoot(viewModel: PlayerViewModel) {
         dynamicColor = prefs.dynamicColor,
         accent = prefs.accent,
     ) {
+        var unlocked by remember { mutableStateOf(false) }
+        if (prefs.appLockPin.isNotEmpty() && !unlocked) {
+            AppLockScreen(
+                expectedPin = prefs.appLockPin,
+                onUnlock = { unlocked = true },
+            )
+            return@ModernMusicTheme
+        }
         val nav = rememberNavController()
         val backStack by nav.currentBackStackEntryAsState()
         val current = backStack?.destination?.route ?: "library"
@@ -133,8 +146,11 @@ fun AppRoot(viewModel: PlayerViewModel) {
                     composable("library") { LibraryScreen(viewModel) }
                     composable("youtube") { YoutubeScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
-                    composable("settings") { SettingsScreen(viewModel) }
+                    composable("settings") {
+                        SettingsScreen(viewModel, onOpenStats = { nav.navigate("stats") })
+                    }
                     composable("about") { AboutScreen() }
+                    composable("stats") { StatsScreen(viewModel, onBack = { nav.popBackStack() }) }
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)

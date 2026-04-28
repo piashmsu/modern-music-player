@@ -151,6 +151,13 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
                 _state.value.currentSong?.let {
                     viewModelScope.launch { prefsRepo.recordPlay(it.id.toString()) }
                 }
+                // Sleep at end of song: pause when the previous song ended naturally.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    _prefs.value.sleepEndOfSong
+                ) {
+                    c.pause()
+                    viewModelScope.launch { prefsRepo.setSleepEndOfSong(false) }
+                }
                 // syncFromController (triggered via onEvents) loads lyrics
                 // after the state has been updated to the new song.
             }
@@ -482,6 +489,87 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun setAutoRadio(v: Boolean) {
         viewModelScope.launch { prefsRepo.setAutoRadio(v) }
+    }
+
+    fun setAppLockPin(pin: String) {
+        viewModelScope.launch { prefsRepo.setAppLockPin(pin) }
+    }
+
+    fun setShakeToSkip(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setShakeToSkip(v) }
+    }
+
+    fun setSleepEndOfSong(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setSleepEndOfSong(v) }
+    }
+
+    fun setSpatialWide(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setSpatialWide(v) }
+    }
+
+    fun setPrefetch(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setPrefetch(v) }
+    }
+
+    fun setVoiceSearch(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setVoiceSearch(v) }
+    }
+
+    suspend fun exportBackup(uri: android.net.Uri): Boolean {
+        val repo = com.gsmtrick.musicplayer.data.BackupRepository(
+            getApplication(), prefsRepo, playlistRepo,
+        )
+        return repo.export(uri)
+    }
+
+    suspend fun importBackup(uri: android.net.Uri): Boolean {
+        val repo = com.gsmtrick.musicplayer.data.BackupRepository(
+            getApplication(), prefsRepo, playlistRepo,
+        )
+        val ok = repo.import(uri)
+        if (ok) {
+            // Reload playlists
+            playlistRepo.load()
+        }
+        return ok
+    }
+
+    /** Total listening time approximation: sum of (playCount × duration). */
+    fun totalListeningMs(): Long {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        // Fallback: for unknown ids, approximate 3 minutes
+        return counts.entries.sumOf { (id, n) ->
+            (songs[id]?.durationMs ?: 180_000L) * n
+        }
+    }
+
+    /** Top artists by total play count across their songs. */
+    fun topArtists(limit: Int = 10): List<Pair<String, Int>> {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        val byArtist = HashMap<String, Int>()
+        counts.forEach { (id, n) ->
+            val artist = songs[id]?.artist ?: return@forEach
+            byArtist[artist] = (byArtist[artist] ?: 0) + n
+        }
+        return byArtist.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { it.key to it.value }
+    }
+
+    /** Top songs by play count. */
+    fun topSongs(limit: Int = 10): List<Pair<Song, Int>> {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        return counts.entries
+            .mapNotNull { (id, n) ->
+                val s = songs[id] ?: return@mapNotNull null
+                s to n
+            }
+            .sortedByDescending { it.second }
+            .take(limit)
     }
 
     fun setFolderLockPin(pin: String) {

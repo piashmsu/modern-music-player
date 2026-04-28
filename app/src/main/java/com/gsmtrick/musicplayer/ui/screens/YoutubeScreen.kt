@@ -2,6 +2,7 @@ package com.gsmtrick.musicplayer.ui.screens
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
@@ -33,6 +34,10 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Mic
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -219,15 +224,50 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
             }
         }
 
+        val voiceLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            val matches = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val text = matches?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                query = text
+                focus.clearFocus()
+                runSearch(text)
+            }
+        }
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Song, artist or playlist URL...") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) {
-                        Icon(Icons.Rounded.Close, null)
+                Row {
+                    if (prefs.voiceSearchEnabled) {
+                        IconButton(onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(
+                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                )
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Search YouTube")
+                            }
+                            runCatching { voiceLauncher.launch(intent) }
+                                .onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        "Voice search not available on this device",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                        }) {
+                            Icon(Icons.Rounded.Mic, "Voice search")
+                        }
+                    }
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Rounded.Close, null)
+                        }
                     }
                 }
             },

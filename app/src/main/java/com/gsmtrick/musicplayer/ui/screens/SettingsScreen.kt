@@ -17,15 +17,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +53,74 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
 
 @Composable
-fun SettingsScreen(viewModel: PlayerViewModel) {
+fun SettingsScreen(viewModel: PlayerViewModel, onOpenStats: () -> Unit = {}) {
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pinDialog by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = viewModel.exportBackup(uri)
+                Toast.makeText(
+                    context,
+                    if (ok) "Backup exported" else "Export failed",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val ok = viewModel.importBackup(uri)
+                Toast.makeText(
+                    context,
+                    if (ok) "Backup restored" else "Import failed",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    if (pinDialog) {
+        var pin by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { pinDialog = false },
+            title = { Text("Set app lock PIN") },
+            text = {
+                Column {
+                    Text("Enter 4-8 digits. Empty PIN clears the lock.")
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it.filter(Char::isDigit).take(8) },
+                        label = { Text("PIN") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setAppLockPin(if (pin.length in 4..8) pin else "")
+                    pinDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.setAppLockPin("")
+                    pinDialog = false
+                }) { Text("Clear") }
+            },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -319,8 +402,91 @@ fun SettingsScreen(viewModel: PlayerViewModel) {
             }
         }
         item {
+            SettingCard("Statistics", "Total listening time, top artists & songs") {
+                Button(onClick = onOpenStats, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open statistics")
+                }
+            }
+        }
+        item {
+            SettingCard("Backup & restore", "Export and import settings, favorites, playlists") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { exportLauncher.launch("modern-music-backup.json") },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Export") }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Restore") }
+                }
+            }
+        }
+        item {
+            SettingCard("App lock", if (prefs.appLockPin.isEmpty()) "No PIN set" else "PIN protected") {
+                Button(onClick = { pinDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (prefs.appLockPin.isEmpty()) "Set PIN" else "Change / clear PIN")
+                }
+            }
+        }
+        item {
+            SettingCard("Shake to skip", "Shake the phone to play next song") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.shakeToSkip,
+                        onCheckedChange = { viewModel.setShakeToSkip(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Sleep at end of song", "Auto-pause once the current song finishes") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.sleepEndOfSong,
+                        onCheckedChange = { viewModel.setSleepEndOfSong(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Spatial wide", "Stereo widening for surround feel") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.spatialWide,
+                        onCheckedChange = { viewModel.setSpatialWide(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Pre-fetch next stream", "Resolves the next YouTube song in advance") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.prefetchEnabled,
+                        onCheckedChange = { viewModel.setPrefetch(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Voice search", "Mic icon in YouTube search bar") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.voiceSearchEnabled,
+                        onCheckedChange = { viewModel.setVoiceSearch(it) },
+                    )
+                }
+            }
+        }
+        item {
             Text(
-                "Modern Music Player • v2.0",
+                "Modern Music Player • v3.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
