@@ -288,6 +288,45 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         c.setMediaItem(item)
         c.prepare()
         c.play()
+
+        if (_prefs.value.autoRadio) {
+            queueAutoRadio(sourceUrl)
+        }
+    }
+
+    /** Fetches related YouTube items and appends a few as queued media items. */
+    private fun queueAutoRadio(sourceUrl: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val related = runCatching {
+                com.gsmtrick.musicplayer.data.youtube.YoutubeRepository.relatedTo(sourceUrl)
+            }.getOrNull().orEmpty().take(5)
+            if (related.isEmpty()) return@launch
+            val quality = _prefs.value.audioQuality
+            val items = related.mapNotNull { r ->
+                runCatching {
+                    val s = com.gsmtrick.musicplayer.data.youtube.YoutubeRepository
+                        .resolveStream(r.url, quality)
+                    val md = MediaMetadata.Builder()
+                        .setTitle(s.title)
+                        .setArtist(s.uploader ?: "YouTube")
+                        .apply {
+                            if (s.thumbnailUrl != null) {
+                                setArtworkUri(android.net.Uri.parse(s.thumbnailUrl))
+                            }
+                        }
+                        .build()
+                    MediaItem.Builder()
+                        .setMediaId("yt:${s.url}")
+                        .setUri(s.audioStreamUrl)
+                        .setMediaMetadata(md)
+                        .build()
+                }.getOrNull()
+            }
+            if (items.isEmpty()) return@launch
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                controller?.addMediaItems(items)
+            }
+        }
     }
 
     fun next() = controller?.seekToNext()
@@ -439,6 +478,10 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun setKaraokeMode(v: Boolean) {
         viewModelScope.launch { prefsRepo.setKaraokeMode(v) }
+    }
+
+    fun setAutoRadio(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setAutoRadio(v) }
     }
 
     fun setFolderLockPin(pin: String) {

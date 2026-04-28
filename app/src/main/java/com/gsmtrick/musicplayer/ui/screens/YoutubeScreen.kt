@@ -84,10 +84,16 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
         if (q.isBlank()) return
         loading = true
         error = null
-        viewModel.pushSearchHistory(q)
         scope.launch {
             try {
-                results = YoutubeRepository.search(q)
+                val isPlaylistUrl = q.contains("list=") &&
+                    (q.startsWith("http://") || q.startsWith("https://"))
+                results = if (isPlaylistUrl) {
+                    YoutubeRepository.importPlaylist(q)
+                } else {
+                    viewModel.pushSearchHistory(q)
+                    YoutubeRepository.search(q)
+                }
             } catch (t: Throwable) {
                 error = t.message ?: "Search failed"
                 results = emptyList()
@@ -153,7 +159,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Search a song or artist...") },
+            placeholder = { Text("Song, artist or playlist URL...") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {

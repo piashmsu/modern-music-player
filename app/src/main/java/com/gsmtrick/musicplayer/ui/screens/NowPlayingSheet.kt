@@ -43,6 +43,10 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -197,6 +201,8 @@ private fun FullPlayer(
     val song = state.currentSong ?: return
     var lyricsOpen by remember { mutableStateOf(false) }
     var speedOpen by remember { mutableStateOf(false) }
+    var bookmarksOpen by remember { mutableStateOf(false) }
+    val abLoop by viewModel.abLoop.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier
@@ -255,6 +261,32 @@ private fun FullPlayer(
                         )
                     }) {
                         Icon(Icons.Rounded.Lock, null)
+                    }
+                    IconButton(onClick = {
+                        when {
+                            abLoop == null -> viewModel.setAbLoopStart()
+                            abLoop?.endMs == Long.MAX_VALUE -> viewModel.setAbLoopEnd()
+                            else -> viewModel.clearAbLoop()
+                        }
+                    }) {
+                        Icon(
+                            Icons.Rounded.Loop,
+                            null,
+                            tint = when {
+                                abLoop == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                abLoop?.endMs == Long.MAX_VALUE -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                        )
+                    }
+                    val hasBookmarks = (prefs.audioBookmarks[song.id.toString()]?.isNotEmpty() == true)
+                    IconButton(onClick = { bookmarksOpen = true }) {
+                        Icon(
+                            if (hasBookmarks) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                            null,
+                            tint = if (hasBookmarks) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     IconButton(onClick = { speedOpen = true }) {
                         Icon(Icons.Rounded.Speed, null)
@@ -465,8 +497,90 @@ private fun FullPlayer(
                     onDismiss = { speedOpen = false },
                 )
             }
+
+            if (bookmarksOpen) {
+                BookmarksDialog(
+                    songId = song.id.toString(),
+                    bookmarks = prefs.audioBookmarks[song.id.toString()].orEmpty(),
+                    currentMs = state.positionMs,
+                    onSeek = { ms ->
+                        viewModel.seekToBookmark(ms)
+                    },
+                    onAdd = { label ->
+                        viewModel.addBookmark(song.id.toString(), label)
+                    },
+                    onRemove = { ms ->
+                        viewModel.removeBookmark(song.id.toString(), ms)
+                    },
+                    onDismiss = { bookmarksOpen = false },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun BookmarksDialog(
+    songId: String,
+    bookmarks: List<com.gsmtrick.musicplayer.data.Bookmark>,
+    currentMs: Long,
+    onSeek: (Long) -> Unit,
+    onAdd: (String) -> Unit,
+    onRemove: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var label by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bookmarks") },
+        text = {
+            Column {
+                Text(
+                    "Current: ${formatDuration(currentMs)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Label (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                androidx.compose.material3.TextButton(onClick = {
+                    onAdd(label.ifBlank { "Bookmark" })
+                    label = ""
+                }) {
+                    Text("Add bookmark at current position")
+                }
+                if (bookmarks.isNotEmpty()) {
+                    androidx.compose.material3.Divider()
+                    bookmarks.forEach { bm ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSeek(bm.positionMs); onDismiss() }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${formatDuration(bm.positionMs)}  ${bm.label}",
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { onRemove(bm.positionMs) }) {
+                                Icon(Icons.Rounded.Close, null)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
 }
 
 @Composable

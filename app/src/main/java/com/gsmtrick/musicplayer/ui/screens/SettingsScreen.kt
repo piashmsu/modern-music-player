@@ -200,6 +200,17 @@ fun SettingsScreen(viewModel: PlayerViewModel) {
             }
         }
         item {
+            SettingCard("Auto-radio (YouTube)", "Queue 5 related songs after each YouTube song") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.autoRadio,
+                        onCheckedChange = { viewModel.setAutoRadio(it) },
+                    )
+                }
+            }
+        }
+        item {
             SettingCard("Audio quality (YouTube)", "Bitrate for streaming and downloads") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("auto" to "Auto", "low" to "Low", "medium" to "Med", "high" to "High").forEach { (k, v) ->

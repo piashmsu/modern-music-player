@@ -123,7 +123,7 @@ class MusicPlaybackService : MediaSessionService() {
         scope.launch {
             prefs.prefs.collectLatest { p ->
                 effects.apply(p.effects)
-                applyChannelMix(p.effects)
+                applyChannelMix(p.effects, karaoke = p.karaokeMode)
                 globalSpeed = p.playbackSpeed.coerceIn(0.5f, 2f)
                 pitchSemitones = p.effects.pitchSemitones
                 perSongSpeed = p.perSongSpeed
@@ -159,7 +159,7 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun applyChannelMix(state: EffectsState) {
+    private fun applyChannelMix(state: EffectsState, karaoke: Boolean = false) {
         val balance = state.balance.coerceIn(-1f, 1f)
         val leftGain: Float
         val rightGain: Float
@@ -177,13 +177,18 @@ class MusicPlaybackService : MediaSessionService() {
                 rightGain = if (balance < 0f) 1f + balance else 1f
             }
         }
-        // 2-input -> 2-output matrix.
-        val matrix = when (state.monoMode) {
-            "mono" -> floatArrayOf(
+        // Karaoke trick: mix left = L - R, right = R - L, which cancels
+        // the centered (mono) vocal while leaving stereo instruments.
+        val matrix = when {
+            karaoke -> floatArrayOf(
+                1f, -1f,
+                -1f, 1f,
+            )
+            state.monoMode == "mono" -> floatArrayOf(
                 0.5f, 0.5f,
                 0.5f, 0.5f,
             )
-            "reverse" -> floatArrayOf(
+            state.monoMode == "reverse" -> floatArrayOf(
                 0f, 1f,
                 1f, 0f,
             )

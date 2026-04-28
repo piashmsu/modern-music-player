@@ -3,6 +3,8 @@ package com.gsmtrick.musicplayer.ui
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import com.gsmtrick.musicplayer.ui.components.AnimatedAuroraBackground
+import com.gsmtrick.musicplayer.ui.components.EdgeLightingOverlay
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -117,6 +119,12 @@ fun AppRoot(viewModel: PlayerViewModel) {
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
+                if (prefs.animatedWallpaper) {
+                    AnimatedAuroraBackground(
+                        modifier = Modifier.fillMaxSize(),
+                        playing = state.isPlaying,
+                    )
+                }
                 NavHost(navController = nav, startDestination = "library") {
                     composable("library") { LibraryScreen(viewModel) }
                     composable("youtube") { YoutubeScreen(viewModel) }
@@ -126,6 +134,12 @@ fun AppRoot(viewModel: PlayerViewModel) {
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)
+                }
+                if (prefs.edgeLighting && state.isPlaying) {
+                    EdgeLightingOverlay(
+                        modifier = Modifier.fillMaxSize(),
+                        active = true,
+                    )
                 }
             }
         }

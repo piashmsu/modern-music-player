@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamExtractor
@@ -98,6 +99,49 @@ object YoutubeRepository {
             else -> sorted.last()
         }
     }
+
+    /** Imports a YouTube playlist by URL and returns its songs as search results. */
+    suspend fun importPlaylist(url: String, limit: Int = 200): List<YoutubeSearchResult> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+            val info: PlaylistInfo = PlaylistInfo.getInfo(url)
+            info.relatedItems
+                .asSequence()
+                .take(limit)
+                .map {
+                    YoutubeSearchResult(
+                        url = it.url,
+                        title = it.name,
+                        uploader = it.uploaderName,
+                        durationSec = it.duration,
+                        thumbnailUrl = it.thumbnails.firstOrNull()?.url,
+                    )
+                }
+                .toList()
+        }
+
+    /**
+     * After playing a stream, fetch the related list (auto-radio).
+     */
+    suspend fun relatedTo(url: String, limit: Int = 30): List<YoutubeSearchResult> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+            val info = StreamInfo.getInfo(url)
+            info.relatedItems
+                .asSequence()
+                .filterIsInstance<StreamInfoItem>()
+                .take(limit)
+                .map {
+                    YoutubeSearchResult(
+                        url = it.url,
+                        title = it.name,
+                        uploader = it.uploaderName,
+                        durationSec = it.duration,
+                        thumbnailUrl = it.thumbnails.firstOrNull()?.url,
+                    )
+                }
+                .toList()
+        }
 
     private fun mimeFor(s: AudioStream): String {
         return s.format?.mimeType ?: "audio/mp4"

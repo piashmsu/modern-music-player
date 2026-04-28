@@ -68,6 +68,7 @@ data class AppPrefs(
     val lockedFolders: Set<String> = emptySet(),
     val karaokeMode: Boolean = false,
     val genreEqMap: Map<String, String> = emptyMap(), // genre -> preset name
+    val autoRadio: Boolean = false, // queue related YouTube songs after current
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -124,6 +125,7 @@ class PreferencesRepository(private val context: Context) {
         val LOCKED_FOLDERS = stringSetPreferencesKey("locked_folders")
         val KARAOKE = booleanPreferencesKey("karaoke")
         val GENRE_EQ = stringPreferencesKey("genre_eq") // JSON map
+        val AUTO_RADIO = booleanPreferencesKey("auto_radio")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -183,8 +185,11 @@ class PreferencesRepository(private val context: Context) {
             lockedFolders = this[K.LOCKED_FOLDERS] ?: emptySet(),
             karaokeMode = this[K.KARAOKE] ?: false,
             genreEqMap = decodeStringMap(this[K.GENRE_EQ]),
+            autoRadio = this[K.AUTO_RADIO] ?: false,
         )
     }
+
+    suspend fun setAutoRadio(v: Boolean) = context.dataStore.edit { it[K.AUTO_RADIO] = v }
 
     suspend fun setTheme(mode: String) = context.dataStore.edit { it[K.THEME] = mode }
     suspend fun setDynamic(enabled: Boolean) = context.dataStore.edit { it[K.DYNAMIC] = enabled }
