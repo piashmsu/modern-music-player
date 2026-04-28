@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -30,6 +31,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.gsmtrick.musicplayer.playback.MusicPlaybackService
+import com.gsmtrick.musicplayer.ui.screens.AboutScreen
 import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
@@ -97,6 +99,12 @@ fun AppRoot(viewModel: PlayerViewModel) {
                         icon = { Icon(Icons.Rounded.Settings, null) },
                         label = { Text("Settings") },
                     )
+                    NavigationBarItem(
+                        selected = current == "about",
+                        onClick = { nav.navigate("about") },
+                        icon = { Icon(Icons.Rounded.Info, null) },
+                        label = { Text("About") },
+                    )
                 }
             },
         ) { padding ->
@@ -105,6 +113,7 @@ fun AppRoot(viewModel: PlayerViewModel) {
                     composable("library") { LibraryScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
                     composable("settings") { SettingsScreen(viewModel) }
+                    composable("about") { AboutScreen() }
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)
