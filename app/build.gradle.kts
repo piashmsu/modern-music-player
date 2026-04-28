@@ -100,7 +100,7 @@ dependencies {
     // Used by NewPipe / ViMusic-style open-source clients. Note this lives
     // in a legal grey area w.r.t. YouTube ToS; fine for personal/sideload,
     // not Play-Store safe.
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.2")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
