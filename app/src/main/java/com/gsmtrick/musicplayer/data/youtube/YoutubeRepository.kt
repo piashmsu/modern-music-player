@@ -67,14 +67,15 @@ object YoutubeRepository {
                 .toList()
         }
 
-    suspend fun resolveStream(url: String): YoutubeStream =
+    /** quality: "auto" | "low" | "medium" | "high" */
+    suspend fun resolveStream(url: String, quality: String = "auto"): YoutubeStream =
         withContext(Dispatchers.IO) {
             ensureInit()
             val info: StreamInfo = StreamInfo.getInfo(url)
-            val audio = info.audioStreams
+            val progressive = info.audioStreams
                 .filter { it.deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.PROGRESSIVE_HTTP }
-                .maxByOrNull { it.averageBitrate.takeIf { b -> b > 0 } ?: it.bitrate }
-                ?: info.audioStreams.firstOrNull()
+            val candidates = if (progressive.isNotEmpty()) progressive else info.audioStreams
+            val audio = pickByQuality(candidates, quality)
                 ?: throw IllegalStateException("No audio stream available")
             YoutubeStream(
                 url = url,
@@ -86,6 +87,17 @@ object YoutubeRepository {
                 audioMimeType = mimeFor(audio),
             )
         }
+
+    private fun pickByQuality(streams: List<AudioStream>, quality: String): AudioStream? {
+        if (streams.isEmpty()) return null
+        val sorted = streams.sortedBy { it.averageBitrate.takeIf { b -> b > 0 } ?: it.bitrate }
+        return when (quality) {
+            "low" -> sorted.first()
+            "medium" -> sorted[sorted.size / 2]
+            "high", "auto" -> sorted.last()
+            else -> sorted.last()
+        }
+    }
 
     private fun mimeFor(s: AudioStream): String {
         return s.format?.mimeType ?: "audio/mp4"

@@ -3,7 +3,12 @@ package com.gsmtrick.musicplayer.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
+import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 data class LyricLine(val timeMs: Long, val text: String)
 
@@ -23,34 +28,101 @@ data class Lyrics(
 
 class LyricsRepository(private val context: Context) {
 
+    private val http: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .build()
+    }
+
     /**
-     * Looks for a sidecar `.lrc` next to the file, then falls back to plain text in
-     * tags. Returns null if nothing is found.
+     * Looks for a sidecar `.lrc` next to the file, then a plain `.txt`,
+     * then a cached LRCLib hit, then (if [allowOnline]) the LRCLib API.
      */
-    suspend fun loadLyrics(song: Song): Lyrics? = withContext(Dispatchers.IO) {
-        val path = song.filePath ?: return@withContext null
-        val file = File(path)
-        val parent = file.parentFile ?: return@withContext null
-        val baseName = file.nameWithoutExtension
-        val candidates = listOf(
-            File(parent, "$baseName.lrc"),
-            File(parent, "$baseName.LRC"),
-            File(parent, "${file.name}.lrc"),
-        )
-        candidates.firstOrNull { it.exists() && it.canRead() }
-            ?.let { return@withContext parseLrc(it.readText()) }
-        // Plain .txt fallback.
-        val txt = File(parent, "$baseName.txt")
-        if (txt.exists() && txt.canRead()) {
-            val raw = txt.readText().trim()
-            if (raw.isNotEmpty()) {
-                return@withContext Lyrics(
-                    raw.lineSequence().map { LyricLine(0, it) }.toList(),
-                    isSynced = false,
-                )
+    suspend fun loadLyrics(song: Song, allowOnline: Boolean = true): Lyrics? =
+        withContext(Dispatchers.IO) {
+            val path = song.filePath
+            if (path != null) {
+                val file = File(path)
+                val parent = file.parentFile
+                val baseName = file.nameWithoutExtension
+                if (parent != null) {
+                    val candidates = listOf(
+                        File(parent, "$baseName.lrc"),
+                        File(parent, "$baseName.LRC"),
+                        File(parent, "${file.name}.lrc"),
+                    )
+                    candidates.firstOrNull { it.exists() && it.canRead() }
+                        ?.let { return@withContext parseLrc(it.readText()) }
+                    val txt = File(parent, "$baseName.txt")
+                    if (txt.exists() && txt.canRead()) {
+                        val raw = txt.readText().trim()
+                        if (raw.isNotEmpty()) {
+                            return@withContext Lyrics(
+                                raw.lineSequence().map { LyricLine(0, it) }.toList(),
+                                isSynced = false,
+                            )
+                        }
+                    }
+                }
             }
+
+            // Cache lookup.
+            val cacheFile = lyricsCacheFile(song)
+            if (cacheFile.exists() && cacheFile.canRead()) {
+                val cached = cacheFile.readText()
+                if (cached.isNotBlank()) return@withContext parseLrc(cached)
+            }
+
+            // LRCLib fallback.
+            if (allowOnline) {
+                val online = fetchFromLrclib(song)
+                if (online != null) {
+                    runCatching { cacheFile.writeText(online) }
+                    return@withContext parseLrc(online)
+                }
+            }
+            null
         }
-        null
+
+    private fun lyricsCacheFile(song: Song): File {
+        val dir = File(context.filesDir, "lyrics-cache").apply { mkdirs() }
+        val key = (song.title + "|" + song.artist).hashCode().toString()
+        return File(dir, "$key.lrc")
+    }
+
+    private fun fetchFromLrclib(song: Song): String? {
+        return runCatching {
+            val q = listOf(
+                "track_name" to song.title,
+                "artist_name" to song.artist,
+                "album_name" to song.album,
+                "duration" to (song.durationMs / 1000).toString(),
+            )
+                .filter { (_, v) -> v.isNotBlank() && v != "0" }
+                .joinToString("&") { (k, v) ->
+                    "$k=" + URLEncoder.encode(v, "UTF-8")
+                }
+            val req = Request.Builder()
+                .url("https://lrclib.net/api/get?$q")
+                .header(
+                    "User-Agent",
+                    "ModernMusicPlayer/2.0 (https://github.com/piashmsu/modern-music-player)",
+                )
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@runCatching null
+                val body = resp.body?.string() ?: return@runCatching null
+                val o = JSONObject(body)
+                val synced = o.optString("syncedLyrics", "")
+                val plain = o.optString("plainLyrics", "")
+                when {
+                    synced.isNotBlank() -> synced
+                    plain.isNotBlank() -> plain
+                    else -> null
+                }
+            }
+        }.getOrNull()
     }
 
     private fun parseLrc(text: String): Lyrics {

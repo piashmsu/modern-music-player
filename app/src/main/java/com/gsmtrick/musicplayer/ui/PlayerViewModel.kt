@@ -157,13 +157,28 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         })
         positionJob?.cancel()
         positionJob = viewModelScope.launch {
+            var tickCount = 0L
             while (true) {
                 controller?.let { ctl ->
+                    val pos = ctl.currentPosition.coerceAtLeast(0)
                     _state.update {
                         it.copy(
-                            positionMs = ctl.currentPosition.coerceAtLeast(0),
+                            positionMs = pos,
                             durationMs = ctl.duration.coerceAtLeast(0),
                         )
+                    }
+                    // A-B loop enforcement.
+                    _abLoop.value?.let { loop ->
+                        if (pos >= loop.endMs && loop.startMs in 0..loop.endMs) {
+                            ctl.seekTo(loop.startMs)
+                        }
+                    }
+                    // Persist last position roughly every 5 s.
+                    tickCount++
+                    if (tickCount % 10 == 0L) {
+                        _state.value.currentSong?.let { s ->
+                            prefsRepo.saveLastPosition(s.id.toString(), pos)
+                        }
                     }
                 }
                 delay(500)
@@ -181,8 +196,9 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
             return
         }
         val targetId = s.id
+        val online = _prefs.value.autoLyrics
         lyricsJob = viewModelScope.launch {
-            val loaded = lyricsRepo.loadLyrics(s)
+            val loaded = lyricsRepo.loadLyrics(s, allowOnline = online)
             // Discard if the user/player has moved on to a different song.
             if (_state.value.currentSong?.id == targetId) {
                 _lyrics.value = loaded
@@ -387,6 +403,104 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun setLockScreenPlayer(enabled: Boolean) {
         viewModelScope.launch { prefsRepo.setLockScreenPlayer(enabled) }
+    }
+
+    fun setAudioQuality(q: String) {
+        viewModelScope.launch { prefsRepo.setAudioQuality(q) }
+    }
+
+    fun setIncognito(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setIncognito(v) }
+    }
+
+    fun setAutoLyrics(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setAutoLyrics(v) }
+    }
+
+    fun setLanguage(lang: String) {
+        viewModelScope.launch { prefsRepo.setLanguage(lang) }
+    }
+
+    fun setNowPlayingLayout(layout: String) {
+        viewModelScope.launch { prefsRepo.setNowPlayingLayout(layout) }
+    }
+
+    fun setGlassTheme(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setGlassTheme(v) }
+    }
+
+    fun setEdgeLighting(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setEdgeLighting(v) }
+    }
+
+    fun setAnimatedWallpaper(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setAnimatedWallpaper(v) }
+    }
+
+    fun setKaraokeMode(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setKaraokeMode(v) }
+    }
+
+    fun setFolderLockPin(pin: String) {
+        viewModelScope.launch { prefsRepo.setFolderLockPin(pin) }
+    }
+
+    fun toggleLockedFolder(folder: String) {
+        viewModelScope.launch { prefsRepo.toggleLockedFolder(folder) }
+    }
+
+    fun pushSearchHistory(query: String) {
+        viewModelScope.launch { prefsRepo.pushSearchHistory(query) }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch { prefsRepo.clearSearchHistory() }
+    }
+
+    fun addBookmark(songId: String, label: String) {
+        val pos = controller?.currentPosition ?: 0L
+        viewModelScope.launch {
+            prefsRepo.addBookmark(songId, com.gsmtrick.musicplayer.data.Bookmark(pos, label))
+        }
+    }
+
+    fun removeBookmark(songId: String, positionMs: Long) {
+        viewModelScope.launch { prefsRepo.removeBookmark(songId, positionMs) }
+    }
+
+    fun seekToBookmark(positionMs: Long) {
+        controller?.seekTo(positionMs)
+    }
+
+    fun saveLastPosition() {
+        val c = controller ?: return
+        val id = _state.value.currentSong?.id?.toString() ?: return
+        viewModelScope.launch { prefsRepo.saveLastPosition(id, c.currentPosition) }
+    }
+
+    /** A-B loop is purely playback-session ephemeral state. */
+    data class AbLoop(val startMs: Long, val endMs: Long)
+
+    private val _abLoop = MutableStateFlow<AbLoop?>(null)
+    val abLoop: StateFlow<AbLoop?> = _abLoop.asStateFlow()
+
+    fun setAbLoopStart() {
+        val pos = controller?.currentPosition ?: return
+        _abLoop.value = AbLoop(pos, _abLoop.value?.endMs ?: Long.MAX_VALUE)
+    }
+
+    fun setAbLoopEnd() {
+        val pos = controller?.currentPosition ?: return
+        val cur = _abLoop.value
+        if (cur == null) {
+            _abLoop.value = AbLoop(0L, pos)
+        } else {
+            _abLoop.value = cur.copy(endMs = pos)
+        }
+    }
+
+    fun clearAbLoop() {
+        _abLoop.value = null
     }
 
     fun setSpeed(speed: Float) {

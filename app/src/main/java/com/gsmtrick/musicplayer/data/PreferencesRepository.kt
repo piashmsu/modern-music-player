@@ -52,7 +52,25 @@ data class AppPrefs(
     val perSongSpeed: Map<String, Float> = emptyMap(),
     val playCounts: Map<String, Int> = emptyMap(),
     val recentlyPlayed: List<String> = emptyList(), // song ids, most recent first
+    // Wave 2 features
+    val audioQuality: String = "auto", // auto | low | medium | high
+    val incognito: Boolean = false,
+    val autoLyrics: Boolean = true, // fetch from LRCLib when local lrc not present
+    val ytSearchHistory: List<String> = emptyList(),
+    val language: String = "system", // system | en | bn
+    val audioBookmarks: Map<String, List<Bookmark>> = emptyMap(),
+    val lastPositions: Map<String, Long> = emptyMap(), // songId -> ms (for sleep auto-resume)
+    val nowPlayingLayout: String = "vinyl", // vinyl | cassette | cards | minimal
+    val glassTheme: Boolean = false,
+    val edgeLighting: Boolean = false,
+    val animatedWallpaper: Boolean = false,
+    val folderLockPin: String = "", // empty = no lock
+    val lockedFolders: Set<String> = emptySet(),
+    val karaokeMode: Boolean = false,
+    val genreEqMap: Map<String, String> = emptyMap(), // genre -> preset name
 )
+
+data class Bookmark(val positionMs: Long, val label: String)
 
 data class EqPreset(val name: String, val bands: List<Short>)
 
@@ -90,6 +108,22 @@ class PreferencesRepository(private val context: Context) {
         val PER_SONG_SPEED = stringPreferencesKey("per_song_speed") // JSON
         val PLAY_COUNTS = stringPreferencesKey("play_counts") // JSON
         val RECENT = stringPreferencesKey("recent") // CSV
+
+        val AUDIO_QUALITY = stringPreferencesKey("audio_quality")
+        val INCOGNITO = booleanPreferencesKey("incognito")
+        val AUTO_LYRICS = booleanPreferencesKey("auto_lyrics")
+        val YT_HISTORY = stringPreferencesKey("yt_history") // JSON array
+        val LANGUAGE = stringPreferencesKey("language")
+        val BOOKMARKS = stringPreferencesKey("bookmarks") // JSON map
+        val LAST_POS = stringPreferencesKey("last_pos") // JSON map
+        val NP_LAYOUT = stringPreferencesKey("np_layout")
+        val GLASS = booleanPreferencesKey("glass")
+        val EDGE_LIGHT = booleanPreferencesKey("edge_light")
+        val ANIM_WALL = booleanPreferencesKey("anim_wall")
+        val LOCK_PIN = stringPreferencesKey("lock_pin")
+        val LOCKED_FOLDERS = stringSetPreferencesKey("locked_folders")
+        val KARAOKE = booleanPreferencesKey("karaoke")
+        val GENRE_EQ = stringPreferencesKey("genre_eq") // JSON map
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -134,6 +168,21 @@ class PreferencesRepository(private val context: Context) {
             perSongSpeed = decodeFloatMap(this[K.PER_SONG_SPEED]),
             playCounts = decodeIntMap(this[K.PLAY_COUNTS]),
             recentlyPlayed = (this[K.RECENT] ?: "").split(",").filter { it.isNotBlank() },
+            audioQuality = this[K.AUDIO_QUALITY] ?: "auto",
+            incognito = this[K.INCOGNITO] ?: false,
+            autoLyrics = this[K.AUTO_LYRICS] ?: true,
+            ytSearchHistory = decodeStringList(this[K.YT_HISTORY]),
+            language = this[K.LANGUAGE] ?: "system",
+            audioBookmarks = decodeBookmarks(this[K.BOOKMARKS]),
+            lastPositions = decodeLongMap(this[K.LAST_POS]),
+            nowPlayingLayout = this[K.NP_LAYOUT] ?: "vinyl",
+            glassTheme = this[K.GLASS] ?: false,
+            edgeLighting = this[K.EDGE_LIGHT] ?: false,
+            animatedWallpaper = this[K.ANIM_WALL] ?: false,
+            folderLockPin = this[K.LOCK_PIN] ?: "",
+            lockedFolders = this[K.LOCKED_FOLDERS] ?: emptySet(),
+            karaokeMode = this[K.KARAOKE] ?: false,
+            genreEqMap = decodeStringMap(this[K.GENRE_EQ]),
         )
     }
 
@@ -196,6 +245,7 @@ class PreferencesRepository(private val context: Context) {
         }
 
     suspend fun recordPlay(songId: String) = context.dataStore.edit { p ->
+        if (p[K.INCOGNITO] == true) return@edit
         val counts = decodeIntMap(p[K.PLAY_COUNTS]).toMutableMap()
         counts[songId] = (counts[songId] ?: 0) + 1
         p[K.PLAY_COUNTS] = encodeIntMap(counts)
@@ -259,4 +309,138 @@ class PreferencesRepository(private val context: Context) {
             o.keys().asSequence().associateWith { o.getInt(it) }
         }.getOrDefault(emptyMap())
     }
+
+    private fun decodeLongMap(json: String?): Map<String, Long> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val o = JSONObject(json)
+            o.keys().asSequence().associateWith { o.getLong(it) }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeLongMap(map: Map<String, Long>): String {
+        val o = JSONObject()
+        for ((k, v) in map) o.put(k, v)
+        return o.toString()
+    }
+
+    private fun decodeStringList(json: String?): List<String> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeStringList(list: List<String>): String =
+        JSONArray(list).toString()
+
+    private fun decodeStringMap(json: String?): Map<String, String> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val o = JSONObject(json)
+            o.keys().asSequence().associateWith { o.getString(it) }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeStringMap(map: Map<String, String>): String {
+        val o = JSONObject()
+        for ((k, v) in map) o.put(k, v)
+        return o.toString()
+    }
+
+    private fun decodeBookmarks(json: String?): Map<String, List<Bookmark>> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val o = JSONObject(json)
+            o.keys().asSequence().associateWith { key ->
+                val arr = o.getJSONArray(key)
+                (0 until arr.length()).map { idx ->
+                    val b = arr.getJSONObject(idx)
+                    Bookmark(b.getLong("p"), b.optString("l", ""))
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeBookmarks(map: Map<String, List<Bookmark>>): String {
+        val o = JSONObject()
+        for ((k, list) in map) {
+            val arr = JSONArray()
+            for (bm in list) {
+                val b = JSONObject()
+                b.put("p", bm.positionMs)
+                b.put("l", bm.label)
+                arr.put(b)
+            }
+            o.put(k, arr)
+        }
+        return o.toString()
+    }
+
+    suspend fun setAudioQuality(q: String) = context.dataStore.edit { it[K.AUDIO_QUALITY] = q }
+    suspend fun setIncognito(v: Boolean) = context.dataStore.edit { it[K.INCOGNITO] = v }
+    suspend fun setAutoLyrics(v: Boolean) = context.dataStore.edit { it[K.AUTO_LYRICS] = v }
+    suspend fun setLanguage(lang: String) = context.dataStore.edit { it[K.LANGUAGE] = lang }
+    suspend fun setNowPlayingLayout(layout: String) =
+        context.dataStore.edit { it[K.NP_LAYOUT] = layout }
+    suspend fun setGlassTheme(v: Boolean) = context.dataStore.edit { it[K.GLASS] = v }
+    suspend fun setEdgeLighting(v: Boolean) = context.dataStore.edit { it[K.EDGE_LIGHT] = v }
+    suspend fun setAnimatedWallpaper(v: Boolean) =
+        context.dataStore.edit { it[K.ANIM_WALL] = v }
+    suspend fun setKaraokeMode(v: Boolean) = context.dataStore.edit { it[K.KARAOKE] = v }
+
+    suspend fun setFolderLockPin(pin: String) =
+        context.dataStore.edit { it[K.LOCK_PIN] = pin }
+    suspend fun setLockedFolders(folders: Set<String>) =
+        context.dataStore.edit { it[K.LOCKED_FOLDERS] = folders }
+    suspend fun toggleLockedFolder(folder: String) = context.dataStore.edit { p ->
+        val cur = p[K.LOCKED_FOLDERS].orEmpty().toMutableSet()
+        if (!cur.add(folder)) cur.remove(folder)
+        p[K.LOCKED_FOLDERS] = cur
+    }
+
+    suspend fun pushSearchHistory(query: String) = context.dataStore.edit { p ->
+        if (p[K.INCOGNITO] == true) return@edit
+        val list = decodeStringList(p[K.YT_HISTORY]).toMutableList()
+        list.remove(query)
+        list.add(0, query)
+        p[K.YT_HISTORY] = encodeStringList(list.take(30))
+    }
+
+    suspend fun clearSearchHistory() = context.dataStore.edit { p ->
+        p[K.YT_HISTORY] = encodeStringList(emptyList())
+    }
+
+    suspend fun addBookmark(songId: String, bm: Bookmark) = context.dataStore.edit { p ->
+        val map = decodeBookmarks(p[K.BOOKMARKS]).toMutableMap()
+        val list = (map[songId] ?: emptyList()).toMutableList()
+        list += bm
+        map[songId] = list.sortedBy { it.positionMs }
+        p[K.BOOKMARKS] = encodeBookmarks(map)
+    }
+
+    suspend fun removeBookmark(songId: String, positionMs: Long) =
+        context.dataStore.edit { p ->
+            val map = decodeBookmarks(p[K.BOOKMARKS]).toMutableMap()
+            val list = (map[songId] ?: emptyList()).filterNot { it.positionMs == positionMs }
+            if (list.isEmpty()) map.remove(songId) else map[songId] = list
+            p[K.BOOKMARKS] = encodeBookmarks(map)
+        }
+
+    suspend fun saveLastPosition(songId: String, ms: Long) = context.dataStore.edit { p ->
+        val m = decodeLongMap(p[K.LAST_POS]).toMutableMap()
+        if (ms <= 1000) m.remove(songId) else m[songId] = ms
+        // Keep only last 100 to bound size
+        val trimmed = m.entries.sortedByDescending { it.value }.take(100)
+            .associate { it.key to it.value }
+        p[K.LAST_POS] = encodeLongMap(trimmed)
+    }
+
+    suspend fun setGenreEqPreset(genre: String, presetName: String?) =
+        context.dataStore.edit { p ->
+            val map = decodeStringMap(p[K.GENRE_EQ]).toMutableMap()
+            if (presetName.isNullOrBlank()) map.remove(genre) else map[genre] = presetName
+            p[K.GENRE_EQ] = encodeStringMap(map)
+        }
 }

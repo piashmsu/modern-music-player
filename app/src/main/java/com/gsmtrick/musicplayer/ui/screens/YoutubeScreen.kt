@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
@@ -37,7 +39,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,17 +60,19 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gsmtrick.musicplayer.data.youtube.YoutubeRepository
 import com.gsmtrick.musicplayer.data.youtube.YoutubeSearchResult
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun YoutubeScreen(viewModel: PlayerViewModel) {
     val context = LocalContext.current
     val focus = LocalFocusManager.current
     val scope = rememberCoroutineScope()
+    val prefs by viewModel.prefs.collectAsStateWithLifecycle()
 
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -78,6 +84,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
         if (q.isBlank()) return
         loading = true
         error = null
+        viewModel.pushSearchHistory(q)
         scope.launch {
             try {
                 results = YoutubeRepository.search(q)
@@ -94,7 +101,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
         resolvingUrl = item.url
         scope.launch {
             try {
-                val stream = YoutubeRepository.resolveStream(item.url)
+                val stream = YoutubeRepository.resolveStream(item.url, prefs.audioQuality)
                 viewModel.playRemoteAudio(
                     streamUrl = stream.audioStreamUrl,
                     title = stream.title,
@@ -115,7 +122,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
         resolvingUrl = item.url
         scope.launch {
             try {
-                val stream = YoutubeRepository.resolveStream(item.url)
+                val stream = YoutubeRepository.resolveStream(item.url, prefs.audioQuality)
                 enqueueDownload(context, stream.audioStreamUrl, stream.title, stream.audioMimeType)
                 Toast.makeText(
                     context,
@@ -181,11 +188,52 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
                     }
                 }
                 results.isEmpty() -> {
-                    Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            "Type a song name above and press search.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                    ) {
+                        if (prefs.ytSearchHistory.isNotEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Rounded.History, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Recent searches",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { viewModel.clearSearchHistory() }) {
+                                    Text("Clear")
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                prefs.ytSearchHistory.forEach { q ->
+                                    SuggestionChip(
+                                        onClick = {
+                                            query = q
+                                            focus.clearFocus()
+                                            runSearch(q)
+                                        },
+                                        label = { Text(q) },
+                                    )
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "Type a song name above and press search.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
                 else -> {

@@ -200,8 +200,116 @@ fun SettingsScreen(viewModel: PlayerViewModel) {
             }
         }
         item {
+            SettingCard("Audio quality (YouTube)", "Bitrate for streaming and downloads") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("auto" to "Auto", "low" to "Low", "medium" to "Med", "high" to "High").forEach { (k, v) ->
+                        FilterChip(
+                            selected = prefs.audioQuality == k,
+                            onClick = { viewModel.setAudioQuality(k) },
+                            label = { Text(v) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("Auto lyrics", "Fetch synced lyrics from LRCLib when missing") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.autoLyrics,
+                        onCheckedChange = { viewModel.setAutoLyrics(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "Incognito mode",
+                "Skip recording play counts, recents and search history",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.incognito,
+                        onCheckedChange = { viewModel.setIncognito(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Karaoke mode", "Reduce vocals (center channel) for sing-along") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.karaokeMode,
+                        onCheckedChange = { viewModel.setKaraokeMode(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Glass theme", "Frosted-glass surfaces") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.glassTheme,
+                        onCheckedChange = { viewModel.setGlassTheme(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Edge lighting", "Pulse screen edges to the beat") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.edgeLighting,
+                        onCheckedChange = { viewModel.setEdgeLighting(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Animated wallpaper", "Animated gradient behind library") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.animatedWallpaper,
+                        onCheckedChange = { viewModel.setAnimatedWallpaper(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Now Playing layout", "Vinyl, cassette, cards or minimal") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("vinyl", "cassette", "cards", "minimal").forEach { l ->
+                        FilterChip(
+                            selected = prefs.nowPlayingLayout == l,
+                            onClick = { viewModel.setNowPlayingLayout(l) },
+                            label = { Text(l.replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("Language", "App display language") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("system" to "System", "en" to "English", "bn" to "বাংলা").forEach { (k, v) ->
+                        FilterChip(
+                            selected = prefs.language == k,
+                            onClick = { viewModel.setLanguage(k) },
+                            label = { Text(v) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
             Text(
-                "Modern Music Player • v1.0",
+                "Modern Music Player • v2.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
