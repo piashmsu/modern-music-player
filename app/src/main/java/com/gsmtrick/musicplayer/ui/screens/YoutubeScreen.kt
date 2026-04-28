@@ -31,6 +31,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Whatshot
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,11 +81,51 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
     var error by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<YoutubeSearchResult>>(emptyList()) }
     var resolvingUrl by remember { mutableStateOf<String?>(null) }
+    var modeLabel by remember { mutableStateOf("") }
+
+    fun runTrending() {
+        loading = true
+        error = null
+        modeLabel = "Trending"
+        scope.launch {
+            try {
+                results = YoutubeRepository.trending()
+                if (results.isEmpty()) {
+                    error = "No trending feed available"
+                }
+            } catch (t: Throwable) {
+                error = t.message ?: "Trending failed"
+                results = emptyList()
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    fun runChannel(url: String, name: String) {
+        loading = true
+        error = null
+        modeLabel = "Channel: $name"
+        scope.launch {
+            try {
+                results = YoutubeRepository.channelUploads(url)
+                if (results.isEmpty()) {
+                    error = "No uploads found"
+                }
+            } catch (t: Throwable) {
+                error = t.message ?: "Channel browse failed"
+                results = emptyList()
+            } finally {
+                loading = false
+            }
+        }
+    }
 
     fun runSearch(q: String) {
         if (q.isBlank()) return
         loading = true
         error = null
+        modeLabel = ""
         scope.launch {
             try {
                 val isPlaylistUrl = q.contains("list=") &&
@@ -155,6 +197,27 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton(onClick = { runTrending() }) {
+                Icon(Icons.Rounded.Whatshot, null)
+                Spacer(Modifier.width(4.dp))
+                Text("Trending")
+            }
+            if (modeLabel.isNotEmpty()) {
+                Text(
+                    modeLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                )
+            }
+        }
 
         OutlinedTextField(
             value = query,
@@ -253,6 +316,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
                                 resolving = resolvingUrl == item.url,
                                 onPlay = { playResult(item) },
                                 onDownload = { downloadResult(item) },
+                                onChannel = { url, name -> runChannel(url, name) },
                             )
                         }
                     }
@@ -268,6 +332,7 @@ private fun YoutubeResultRow(
     resolving: Boolean,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
+    onChannel: (String, String) -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -319,12 +384,17 @@ private fun YoutubeResultRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val upUrl = item.uploaderUrl
+                val upName = item.uploader
                 Text(
                     item.uploader ?: "—",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = if (upUrl != null && upName != null) {
+                        Modifier.clickable { onChannel(upUrl, upName) }
+                    } else Modifier,
                 )
             }
             if (resolving) {

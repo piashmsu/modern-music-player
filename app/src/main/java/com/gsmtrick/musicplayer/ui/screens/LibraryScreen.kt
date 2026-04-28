@@ -82,6 +82,7 @@ private enum class LibTab(val titleRes: Int, val icon: ImageVector) {
     MostPlayed(com.gsmtrick.musicplayer.R.string.tab_most_played, Icons.Rounded.Whatshot),
     Folders(com.gsmtrick.musicplayer.R.string.tab_folders, Icons.Rounded.Folder),
     Genres(com.gsmtrick.musicplayer.R.string.tab_genres, Icons.Rounded.QueueMusic),
+    Decades(com.gsmtrick.musicplayer.R.string.tab_decades, Icons.Rounded.History),
 }
 
 @Composable
@@ -98,6 +99,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
     var openArtist by remember { mutableStateOf<Artist?>(null) }
     var openFolder by remember { mutableStateOf<Folder?>(null) }
     var openGenre by remember { mutableStateOf<Genre?>(null) }
+    var openDecade by remember { mutableStateOf<Int?>(null) }
     var openPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
 
@@ -205,6 +207,10 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 genres = library.genres.filter { q.isBlank() || it.name.contains(q, true) },
                 onClick = { openGenre = it },
             )
+            LibTab.Decades -> DecadeList(
+                songs = library.songs,
+                onClick = { openDecade = it },
+            )
         }
     }
 
@@ -215,6 +221,10 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
             s.filePath?.let { java.io.File(it).parent == openFolder!!.path } == true
         }
         openGenre != null -> library.songs // The genre detail uses lazy lookup; show all & filter by genre id
+        openDecade != null -> library.songs.filter { s ->
+            val d = (s.year / 10) * 10
+            d == openDecade
+        }
         openPlaylist != null -> openPlaylist!!.songIds.mapNotNull { id ->
             library.songs.firstOrNull { it.id == id }
         }
@@ -227,6 +237,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 ?: openArtist?.name
                 ?: openFolder?.name
                 ?: openGenre?.name
+                ?: openDecade?.let { "${it}s" }
                 ?: openPlaylist?.name
                 ?: "",
             songs = openSongs,
@@ -238,6 +249,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 openArtist = null
                 openFolder = null
                 openGenre = null
+                openDecade = null
                 openPlaylist = null
             },
             onDeletePlaylist = openPlaylist?.let { p -> { viewModel.deletePlaylist(p.id) } },
@@ -497,6 +509,51 @@ private fun FolderList(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun DecadeList(songs: List<Song>, onClick: (Int) -> Unit) {
+    val decades = remember(songs) {
+        songs.asSequence()
+            .filter { it.year > 0 }
+            .groupBy { (it.year / 10) * 10 }
+            .map { (decade, list) -> decade to list.size }
+            .sortedByDescending { it.first }
+    }
+    if (decades.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "No year metadata found in your songs.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(32.dp),
+            )
+        }
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        items(decades, key = { it.first }) { (decade, count) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClick(decade) }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.History, null)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "${decade}s",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$count",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

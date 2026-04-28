@@ -19,6 +19,7 @@
     <string name="tab_most_played">Most Played</string>
     <string name="tab_folders">Folders</string>
     <string name="tab_genres">Genres</string>
+    <string name="tab_decades">Decades</string>
 
     <!-- Now Playing -->
     <string name="now_playing">Now Playing</string>

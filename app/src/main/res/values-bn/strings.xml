@@ -19,6 +19,7 @@
     <string name="tab_most_played">সর্বাধিক চালানো</string>
     <string name="tab_folders">ফোল্ডার</string>
     <string name="tab_genres">ধরন</string>
+    <string name="tab_decades">দশক</string>
 
     <!-- Now Playing -->
     <string name="now_playing">এখন বাজছে</string>
