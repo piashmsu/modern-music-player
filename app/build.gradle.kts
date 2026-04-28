@@ -11,8 +11,8 @@ android {
         applicationId = "com.gsmtrick.musicplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "2.1"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -95,6 +95,13 @@ dependencies {
 
     // Palette for dynamic colors from album art
     implementation("androidx.palette:palette-ktx:1.0.0")
+
+    // NewPipeExtractor: search/stream/download YouTube and other services.
+    // Used by NewPipe / ViMusic-style open-source clients. Note this lives
+    // in a legal grey area w.r.t. YouTube ToS; fine for personal/sideload,
+    // not Play-Store safe.
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

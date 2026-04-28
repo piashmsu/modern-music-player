@@ -3,12 +3,16 @@ package com.gsmtrick.musicplayer.ui
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import com.gsmtrick.musicplayer.ui.components.AnimatedAuroraBackground
+import com.gsmtrick.musicplayer.ui.components.EdgeLightingOverlay
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -30,10 +34,12 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.gsmtrick.musicplayer.playback.MusicPlaybackService
+import com.gsmtrick.musicplayer.ui.screens.AboutScreen
 import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
 import com.gsmtrick.musicplayer.ui.screens.SettingsScreen
+import com.gsmtrick.musicplayer.ui.screens.YoutubeScreen
 import com.gsmtrick.musicplayer.ui.theme.ModernMusicTheme
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -86,6 +92,12 @@ fun AppRoot(viewModel: PlayerViewModel) {
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
+                        selected = current == "youtube",
+                        onClick = { nav.navigate("youtube") },
+                        icon = { Icon(Icons.Rounded.Search, null) },
+                        label = { Text("YouTube") },
+                    )
+                    NavigationBarItem(
                         selected = current == "effects",
                         onClick = { nav.navigate("effects") },
                         icon = { Icon(Icons.Rounded.Equalizer, null) },
@@ -97,17 +109,37 @@ fun AppRoot(viewModel: PlayerViewModel) {
                         icon = { Icon(Icons.Rounded.Settings, null) },
                         label = { Text("Settings") },
                     )
+                    NavigationBarItem(
+                        selected = current == "about",
+                        onClick = { nav.navigate("about") },
+                        icon = { Icon(Icons.Rounded.Info, null) },
+                        label = { Text("About") },
+                    )
                 }
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
+                if (prefs.animatedWallpaper) {
+                    AnimatedAuroraBackground(
+                        modifier = Modifier.fillMaxSize(),
+                        playing = state.isPlaying,
+                    )
+                }
                 NavHost(navController = nav, startDestination = "library") {
                     composable("library") { LibraryScreen(viewModel) }
+                    composable("youtube") { YoutubeScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
                     composable("settings") { SettingsScreen(viewModel) }
+                    composable("about") { AboutScreen() }
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)
+                }
+                if (prefs.edgeLighting && state.isPlaying) {
+                    EdgeLightingOverlay(
+                        modifier = Modifier.fillMaxSize(),
+                        active = true,
+                    )
                 }
             }
         }
