@@ -14,4 +14,5 @@ data class Song(
     val track: Int = 0,
     val year: Int = 0,
     val mimeType: String? = null,
+    val filePath: String? = null,
 )

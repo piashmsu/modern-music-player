@@ -6,14 +6,16 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
 import android.util.Log
+import com.gsmtrick.musicplayer.data.EQ_BANDS
 import com.gsmtrick.musicplayer.data.EffectsState
 
 /**
  * Wraps Android's audio effect classes. Effects attach to the ExoPlayer
  * audio session id and can be updated live as the user changes settings.
  *
- * All effects are best-effort: some devices/ROMs disallow particular effects
- * (especially LoudnessEnhancer). Failures are logged and ignored.
+ * Up to 10 logical bands are exposed to the UI. The hardware equalizer may
+ * report fewer bands (typically 5); when that happens we down-sample the
+ * UI band values to the available bands.
  */
 class AudioEffectsController {
 
@@ -23,21 +25,13 @@ class AudioEffectsController {
     private var virtualizer: Virtualizer? = null
     private var loudness: LoudnessEnhancer? = null
     private var reverb: PresetReverb? = null
-    /** Secondary equalizer used to inject vocal-frequency boost on top of user EQ. */
     private var vocalEq: Equalizer? = null
 
-    val numberOfBands: Short
-        get() = equalizer?.numberOfBands ?: 5
-    val bandLevelRange: ShortArray?
-        get() = equalizer?.bandLevelRange
-    val centerFrequencies: IntArray?
-        get() = equalizer?.let { eq ->
-            IntArray(eq.numberOfBands.toInt()) { eq.getCenterFreq(it.toShort()) }
-        }
-    val presets: List<String>
-        get() = equalizer?.let { eq ->
-            (0 until eq.numberOfPresets).map { eq.getPresetName(it.toShort()) }
-        } ?: emptyList()
+    val numberOfBands: Int
+        get() = EQ_BANDS
+
+    val centerFrequencies: IntArray
+        get() = LOGICAL_FREQUENCIES
 
     fun attach(audioSessionId: Int) {
         if (audioSessionId == 0) return
@@ -81,9 +75,14 @@ class AudioEffectsController {
             runCatching {
                 eq.enabled = state.equalizerEnabled
                 if (state.equalizerEnabled) {
-                    val n = eq.numberOfBands.toInt().coerceAtMost(state.bands.size)
-                    for (i in 0 until n) {
-                        eq.setBandLevel(i.toShort(), state.bands[i])
+                    val hw = eq.numberOfBands.toInt()
+                    val hwLevels = downsampleBands(state.bands, hw)
+                    val range = eq.bandLevelRange
+                    val lo = range[0].toInt()
+                    val hi = range[1].toInt()
+                    for (i in 0 until hw) {
+                        val lvl = hwLevels[i].toInt().coerceIn(lo, hi).toShort()
+                        eq.setBandLevel(i.toShort(), lvl)
                     }
                 }
             }.onFailure { Log.w(TAG, "Equalizer apply failed", it) }
@@ -116,10 +115,6 @@ class AudioEffectsController {
         applyVocalBoost(state.vocalBoost)
     }
 
-    /**
-     * Vocal boost works by lifting the mid-frequency bands (closest to ~1-3 kHz where
-     * vocals sit) on a secondary equalizer instance. The user's main EQ is untouched.
-     */
     private fun applyVocalBoost(strength: Int) {
         val eq = vocalEq ?: return
         runCatching {
@@ -129,14 +124,12 @@ class AudioEffectsController {
                 return@runCatching
             }
             val range = eq.bandLevelRange
-            val maxGain = range[1].toInt() // mB
+            val maxGain = range[1].toInt()
             val n = eq.numberOfBands.toInt()
-            // Find indices of bands whose center frequency is in the vocal range.
             val vocalIdxs = (0 until n).filter { i ->
-                val f = eq.getCenterFreq(i.toShort()) // microHz
+                val f = eq.getCenterFreq(i.toShort())
                 f in 800_000..3_500_000
             }.ifEmpty { listOf(n / 2) }
-            // Scale gain: full strength -> roughly 60% of max boost so it doesn't clip.
             val gain = (maxGain * 0.6 * (s / 1000.0)).toInt().toShort()
             for (i in 0 until n) {
                 val target = if (i in vocalIdxs) gain else 0
@@ -146,12 +139,24 @@ class AudioEffectsController {
         }.onFailure { Log.w(TAG, "Vocal boost apply failed", it) }
     }
 
-    fun applyPreset(presetIndex: Short): ShortArray? {
-        val eq = equalizer ?: return null
-        return runCatching {
-            eq.usePreset(presetIndex)
-            ShortArray(eq.numberOfBands.toInt()) { eq.getBandLevel(it.toShort()) }
-        }.getOrNull()
+    /**
+     * Map a 10-band UI level array onto the [hwBands] hardware bands by
+     * averaging the UI bands that fall into each hardware bucket.
+     */
+    private fun downsampleBands(uiBands: List<Short>, hwBands: Int): ShortArray {
+        if (hwBands <= 0) return ShortArray(0)
+        if (uiBands.size <= hwBands) {
+            return ShortArray(hwBands) { i -> uiBands.getOrNull(i) ?: 0 }
+        }
+        val result = ShortArray(hwBands)
+        val step = uiBands.size.toFloat() / hwBands
+        for (i in 0 until hwBands) {
+            val start = (i * step).toInt()
+            val end = ((i + 1) * step).toInt().coerceAtMost(uiBands.size)
+            val slice = uiBands.subList(start, end.coerceAtLeast(start + 1))
+            result[i] = slice.map { it.toInt() }.average().toInt().toShort()
+        }
+        return result
     }
 
     fun release() {
@@ -172,6 +177,9 @@ class AudioEffectsController {
 
     companion object {
         private const val TAG = "AudioEffects"
+
+        /** Logical center frequencies (Hz) shown to the user in the 10-band UI. */
+        val LOGICAL_FREQUENCIES = intArrayOf(31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000)
 
         val REVERB_PRESETS = listOf(
             "None" to PresetReverb.PRESET_NONE,

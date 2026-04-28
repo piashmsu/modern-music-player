@@ -113,12 +113,73 @@ fun SettingsScreen(viewModel: PlayerViewModel) {
         }
         item {
             SettingCard("Sleep timer", if (prefs.sleepMinutes > 0) "${prefs.sleepMinutes} minutes" else "Off") {
+                Column {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0, 15, 30, 45, 60, 90).forEach { mins ->
+                            FilterChip(
+                                selected = prefs.sleepMinutes == mins,
+                                onClick = { viewModel.setSleepTimer(mins) },
+                                label = { Text(if (mins == 0) "Off" else "${mins}m") },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Fade out", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = prefs.effects.sleepFadeOut,
+                            onCheckedChange = { v ->
+                                viewModel.updateEffects { it.copy(sleepFadeOut = v) }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("Visualizer", "Show audio spectrum on Now Playing") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.visualizerEnabled,
+                        onCheckedChange = { viewModel.setVisualizer(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Blurred album art", "Use blurred art as background") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.blurredBackground,
+                        onCheckedChange = { viewModel.setBlurredBackground(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "Album-art adaptive theme",
+                "Tint UI to match the playing album art",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.artworkAdaptive,
+                        onCheckedChange = { viewModel.setArtworkAdaptive(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("Font", "Choose UI font family") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(0, 15, 30, 45, 60, 90).forEach { mins ->
+                    listOf("default", "serif", "mono", "rounded").forEach { f ->
                         FilterChip(
-                            selected = prefs.sleepMinutes == mins,
-                            onClick = { viewModel.setSleepTimer(mins) },
-                            label = { Text(if (mins == 0) "Off" else "${mins}m") },
+                            selected = prefs.font == f,
+                            onClick = { viewModel.setFont(f) },
+                            label = { Text(f.replaceFirstChar { it.uppercase() }) },
                         )
                     }
                 }
