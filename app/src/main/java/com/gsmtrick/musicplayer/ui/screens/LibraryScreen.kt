@@ -1,7 +1,9 @@
 package com.gsmtrick.musicplayer.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
@@ -69,16 +72,16 @@ import com.gsmtrick.musicplayer.data.Song
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
 import java.util.concurrent.TimeUnit
 
-private enum class LibTab(val title: String, val icon: ImageVector) {
-    Songs("Songs", Icons.Rounded.MusicNote),
-    Albums("Albums", Icons.Rounded.Album),
-    Artists("Artists", Icons.Rounded.Person),
-    Playlists("Playlists", Icons.Rounded.PlaylistPlay),
-    Favorites("Favorites", Icons.Rounded.Favorite),
-    Recent("Recent", Icons.Rounded.History),
-    MostPlayed("Most Played", Icons.Rounded.Whatshot),
-    Folders("Folders", Icons.Rounded.Folder),
-    Genres("Genres", Icons.Rounded.QueueMusic),
+private enum class LibTab(val titleRes: Int, val icon: ImageVector) {
+    Songs(com.gsmtrick.musicplayer.R.string.tab_songs, Icons.Rounded.MusicNote),
+    Albums(com.gsmtrick.musicplayer.R.string.tab_albums, Icons.Rounded.Album),
+    Artists(com.gsmtrick.musicplayer.R.string.tab_artists, Icons.Rounded.Person),
+    Playlists(com.gsmtrick.musicplayer.R.string.tab_playlists, Icons.Rounded.PlaylistPlay),
+    Favorites(com.gsmtrick.musicplayer.R.string.tab_favorites, Icons.Rounded.Favorite),
+    Recent(com.gsmtrick.musicplayer.R.string.tab_recent, Icons.Rounded.History),
+    MostPlayed(com.gsmtrick.musicplayer.R.string.tab_most_played, Icons.Rounded.Whatshot),
+    Folders(com.gsmtrick.musicplayer.R.string.tab_folders, Icons.Rounded.Folder),
+    Genres(com.gsmtrick.musicplayer.R.string.tab_genres, Icons.Rounded.QueueMusic),
 }
 
 @Composable
@@ -143,7 +146,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 Tab(
                     selected = tab == t,
                     onClick = { tab = t },
-                    text = { Text(t.title) },
+                    text = { Text(androidx.compose.ui.res.stringResource(t.titleRes)) },
                     icon = { Icon(t.icon, null, modifier = Modifier.size(20.dp)) },
                 )
             }
@@ -192,7 +195,11 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
             )
             LibTab.Folders -> FolderList(
                 folders = library.folders.filter { q.isBlank() || it.name.contains(q, true) },
+                lockedFolders = prefs.lockedFolders,
+                pin = prefs.folderLockPin,
                 onClick = { openFolder = it },
+                onToggleLock = { path -> viewModel.toggleLockedFolder(path) },
+                onSetPin = { newPin -> viewModel.setFolderLockPin(newPin) },
             )
             LibTab.Genres -> GenreList(
                 genres = library.genres.filter { q.isBlank() || it.name.contains(q, true) },
@@ -388,23 +395,46 @@ private fun ArtistList(artists: List<Artist>, onClick: (Artist) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderList(folders: List<Folder>, onClick: (Folder) -> Unit) {
+private fun FolderList(
+    folders: List<Folder>,
+    lockedFolders: Set<String>,
+    pin: String,
+    onClick: (Folder) -> Unit,
+    onToggleLock: (String) -> Unit,
+    onSetPin: (String) -> Unit,
+) {
+    var pendingFolder by remember { mutableStateOf<Folder?>(null) }
+    var menuFor by remember { mutableStateOf<Folder?>(null) }
+    var setPinOpen by remember { mutableStateOf(false) }
+
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         items(folders, key = { it.path }) { f ->
+            val locked = f.path in lockedFolders
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onClick(f) }
+                    .combinedClickable(
+                        onClick = {
+                            if (locked && pin.isNotEmpty()) pendingFolder = f else onClick(f)
+                        },
+                        onLongClick = { menuFor = f },
+                    )
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Folder, null)
+                Icon(
+                    if (locked) Icons.Rounded.Lock else Icons.Rounded.Folder,
+                    null,
+                    tint = if (locked) MaterialTheme.colorScheme.primary
+                        else androidx.compose.ui.graphics.Color.Unspecified,
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.name, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        f.path,
+                        if (locked) "Locked" else f.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -419,6 +449,86 @@ private fun FolderList(folders: List<Folder>, onClick: (Folder) -> Unit) {
             }
         }
     }
+
+    menuFor?.let { f ->
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            title = { Text(f.name) },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        if (pin.isEmpty()) setPinOpen = true
+                        else { onToggleLock(f.path); menuFor = null }
+                    }) {
+                        Text(if (f.path in lockedFolders) "Unlock folder" else "Lock folder")
+                    }
+                    TextButton(onClick = { setPinOpen = true; menuFor = null }) {
+                        Text(if (pin.isEmpty()) "Set PIN" else "Change PIN")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { menuFor = null }) { Text("Close") }
+            },
+        )
+    }
+
+    pendingFolder?.let { f ->
+        PinDialog(
+            title = "Enter PIN to open ${f.name}",
+            onDismiss = { pendingFolder = null },
+            onSubmit = { entered ->
+                if (entered == pin) {
+                    onClick(f)
+                    pendingFolder = null
+                }
+            },
+        )
+    }
+
+    if (setPinOpen) {
+        PinDialog(
+            title = if (pin.isEmpty()) "Set 4-digit PIN" else "Change PIN",
+            onDismiss = { setPinOpen = false },
+            onSubmit = { entered ->
+                if (entered.length in 4..8) {
+                    onSetPin(entered)
+                    setPinOpen = false
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun PinDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = value,
+                onValueChange = { value = it.filter { c -> c.isDigit() }.take(8) },
+                label = { Text("PIN") },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(value) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

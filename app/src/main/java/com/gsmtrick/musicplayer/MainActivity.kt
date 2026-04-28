@@ -5,8 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import androidx.lifecycle.lifecycleScope
 import com.gsmtrick.musicplayer.ui.AppRoot
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -15,9 +21,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        lifecycleScope.launch {
+            viewModel.prefs
+                .distinctUntilChangedBy { it.language }
+                .onEach { p -> applyLocale(p.language) }
+                .collect {}
+        }
         setContent {
             AppRoot(viewModel = viewModel)
         }
+    }
+
+    private fun applyLocale(language: String) {
+        val tags = when (language) {
+            "bn" -> "bn"
+            "en" -> "en"
+            else -> "" // system default
+        }
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(tags))
     }
 
     override fun onStart() {

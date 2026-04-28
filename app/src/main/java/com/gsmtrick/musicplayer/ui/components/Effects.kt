@@ -21,6 +21,47 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
+ * A static frosted-glass backdrop: layered radial gradients with a faint
+ * blur-ish appearance via overlapping translucent circles.
+ */
+@Composable
+fun GlassBackdrop(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0x33FFFFFF),
+                    Color(0x11FFFFFF),
+                    Color(0x33A48BFF),
+                ),
+                start = Offset(0f, 0f),
+                end = Offset(w, h),
+            ),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0x33A48BFF), Color(0x00000000)),
+                center = Offset(w * 0.2f, h * 0.15f),
+                radius = w * 0.6f,
+            ),
+            radius = w * 0.6f,
+            center = Offset(w * 0.2f, h * 0.15f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0x3357E0FF), Color(0x00000000)),
+                center = Offset(w * 0.85f, h * 0.85f),
+                radius = w * 0.55f,
+            ),
+            radius = w * 0.55f,
+            center = Offset(w * 0.85f, h * 0.85f),
+        )
+    }
+}
+
+/**
  * A subtle, slowly drifting aurora background. Speeds up while [playing].
  */
 @Composable

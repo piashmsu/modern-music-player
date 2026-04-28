@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">মডার্ন মিউজিক</string>
+
+    <!-- Bottom nav -->
+    <string name="nav_library">লাইব্রেরি</string>
+    <string name="nav_youtube">ইউটিউব</string>
+    <string name="nav_effects">ইফেক্টস</string>
+    <string name="nav_settings">সেটিংস</string>
+    <string name="nav_about">সম্পর্কে</string>
+
+    <!-- Library tabs -->
+    <string name="tab_songs">গান</string>
+    <string name="tab_albums">অ্যালবাম</string>
+    <string name="tab_artists">শিল্পী</string>
+    <string name="tab_playlists">প্লেলিস্ট</string>
+    <string name="tab_favorites">প্রিয়</string>
+    <string name="tab_recent">সাম্প্রতিক</string>
+    <string name="tab_most_played">সর্বাধিক চালানো</string>
+    <string name="tab_folders">ফোল্ডার</string>
+    <string name="tab_genres">ধরন</string>
+
+    <!-- Now Playing -->
+    <string name="now_playing">এখন বাজছে</string>
+    <string name="lyrics">গানের কথা</string>
+    <string name="bookmarks">বুকমার্ক</string>
+    <string name="add_bookmark">বর্তমান অবস্থানে বুকমার্ক যোগ করুন</string>
+    <string name="ab_loop">এ-বি লুপ</string>
+
+    <!-- Common -->
+    <string name="search_hint">খুঁজুন…</string>
+    <string name="ok">ঠিক আছে</string>
+    <string name="cancel">বাতিল</string>
+    <string name="done">সম্পন্ন</string>
+    <string name="close">বন্ধ</string>
+    <string name="add">যোগ করুন</string>
+    <string name="remove">মুছুন</string>
+    <string name="play">চালান</string>
+    <string name="pause">থামান</string>
+    <string name="next">পরের</string>
+    <string name="previous">আগের</string>
+    <string name="shuffle">এলোমেলো</string>
+    <string name="repeat">পুনরাবৃত্তি</string>
+    <string name="favorite">প্রিয়</string>
+
+    <!-- YouTube -->
+    <string name="yt_search_hint">গান, শিল্পী বা প্লেলিস্ট ইউআরএল…</string>
+    <string name="yt_recent_searches">সাম্প্রতিক অনুসন্ধান</string>
+    <string name="yt_clear">মুছে ফেলুন</string>
+    <string name="yt_no_results">কিছু পাওয়া যায়নি</string>
+    <string name="yt_searching">খোঁজা হচ্ছে…</string>
+
+    <!-- Settings sections -->
+    <string name="settings_theme">থিম</string>
+    <string name="settings_accent">অ্যাকসেন্ট রঙ</string>
+    <string name="settings_dynamic_color">ডায়নামিক কালার (অ্যান্ড্রয়েড ১২+)</string>
+    <string name="settings_audio_quality">অডিও কোয়ালিটি (ইউটিউব)</string>
+    <string name="settings_auto_radio">অটো-রেডিও (ইউটিউব)</string>
+    <string name="settings_auto_lyrics">অটো-লিরিকস (LRCLib)</string>
+    <string name="settings_incognito">ইনকগনিটো মোড</string>
+    <string name="settings_karaoke">কারাওকে মোড</string>
+    <string name="settings_glass">গ্লাস থিম</string>
+    <string name="settings_edge_lighting">এজ লাইটিং</string>
+    <string name="settings_animated_wallpaper">অ্যানিমেটেড ওয়ালপেপার</string>
+    <string name="settings_layout">এখন বাজছে স্ক্রিনের লেআউট</string>
+    <string name="settings_language">ভাষা</string>
+    <string name="settings_lock_screen">লকস্ক্রিন প্লেয়ার</string>
+    <string name="settings_visualizer">অডিও ভিজ্যুয়ালাইজার</string>
+    <string name="settings_sleep_timer">স্লিপ টাইমার</string>
+</resources>
