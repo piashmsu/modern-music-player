@@ -485,13 +485,199 @@ fun SettingsScreen(viewModel: PlayerViewModel, onOpenStats: () -> Unit = {}) {
             }
         }
         item {
+            SettingCard("v3.1 — Audio", "Cinema, bass pro, loudness fix, headphone preset") {
+                Column {
+                    SwitchRow("Cinema mode (surround)", prefs.cinemaMode) { viewModel.setCinemaMode(it) }
+                    SwitchRow("Bass enhancer pro (sub-bass)", prefs.bassEnhancerPro) { viewModel.setBassEnhancerPro(it) }
+                    SwitchRow("Loudness war fix", prefs.loudnessFix) { viewModel.setLoudnessFix(it) }
+                    SwitchRow("Auto-EQ per output", prefs.autoEqByEnvironment) { viewModel.setAutoEqByEnvironment(it) }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Headphone preset", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            "flat" to "Flat",
+                            "sony_wh" to "Sony WH",
+                            "airpods" to "AirPods",
+                            "boat" to "Boat",
+                            "realme" to "Realme",
+                            "beats" to "Beats",
+                        ).forEach { (k, v) ->
+                            FilterChip(
+                                selected = prefs.headphonePreset == k,
+                                onClick = { viewModel.setHeadphonePreset(k) },
+                                label = { Text(v) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.1 — YouTube", "Audio-only, pre-cache, captions, YT Music") {
+                Column {
+                    SwitchRow("Audio-only mode (skip video)", prefs.audioOnlyMode) { viewModel.setAudioOnly(it) }
+                    SwitchRow("Pre-cache likely-next on Wi-Fi", prefs.preCacheEnabled) { viewModel.setPreCache(it) }
+                    SwitchRow("Captions → lyrics", prefs.captionsToLyrics) { viewModel.setCaptionsToLyrics(it) }
+                    SwitchRow("YouTube Music backend", prefs.ytMusicBackend) { viewModel.setYtMusicBackend(it) }
+                    SwitchRow("Auto-skip silence (≥7s)", prefs.autoSkipSilence) { viewModel.setAutoSkipSilence(it) }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.1 — UI", "Animations, gestures, density, app icon") {
+                Column {
+                    SwitchRow("Now Playing animations", prefs.npAnimations) { viewModel.setNpAnimations(it) }
+                    SwitchRow("Swipe gestures (mini-player)", prefs.swipeGestures) { viewModel.setSwipeGestures(it) }
+                    SwitchRow("Splash screen", prefs.splashEnabled) { viewModel.setSplashEnabled(it) }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Density", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("compact", "comfortable", "spacious").forEach { d ->
+                            FilterChip(
+                                selected = prefs.density == d,
+                                onClick = { viewModel.setDensity(d) },
+                                label = { Text(d.replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("App icon", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("classic", "neon", "minimal", "vinyl", "dark").forEach { i ->
+                            FilterChip(
+                                selected = prefs.iconVariant == i,
+                                onClick = {
+                                    viewModel.setIconVariant(i)
+                                    com.gsmtrick.musicplayer.util.IconSwitcher
+                                        .applyIconVariant(context, i)
+                                },
+                                label = { Text(i.replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Notification buttons", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("3" to "3-button", "5" to "5-button").forEach { (k, v) ->
+                            FilterChip(
+                                selected = prefs.notifButtonStyle == k,
+                                onClick = { viewModel.setNotifButtonStyle(k) },
+                                label = { Text(v) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.1 — Notifications", "Sticky lyrics, daily stats") {
+                Column {
+                    SwitchRow("Sticky lyrics notification", prefs.stickyLyricsNotif) { viewModel.setStickyLyricsNotif(it) }
+                    SwitchRow("Daily stats notification", prefs.dailyStatsNotif) {
+                        viewModel.setDailyStatsNotif(it)
+                        if (it) com.gsmtrick.musicplayer.work.DailyStatsScheduler.enable(context)
+                        else com.gsmtrick.musicplayer.work.DailyStatsScheduler.disable(context)
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.1 — Smart modes", "Workout, sleep, driving, headphone resume") {
+                Column {
+                    SwitchRow("Workout mode (fast tempo only)", prefs.workoutMode) { viewModel.setWorkoutMode(it) }
+                    SwitchRow("Sleep music mode (lo-fi after 11 PM)", prefs.sleepMusicMode) { viewModel.setSleepMusicMode(it) }
+                    SwitchRow("Driving mode (big buttons)", prefs.drivingMode) { viewModel.setDrivingMode(it) }
+                    SwitchRow("Auto-resume on headphone connect", prefs.autoResumeOnHeadphone) { viewModel.setAutoResumeOnHeadphone(it) }
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "v3.1 — Privacy",
+                "Hidden/trashed songs, encrypted backup, profiles",
+            ) {
+                Column {
+                    Text(
+                        "Hidden songs: ${prefs.hiddenSongs.size}    Trashed: ${prefs.trashedSongs.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.emptyTrash() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Empty trash") }
+                    Spacer(Modifier.height(8.dp))
+                    var pwdField by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = pwdField,
+                        onValueChange = { pwdField = it.take(64) },
+                        label = {
+                            Text(
+                                if (prefs.backupPasswordHash.isEmpty())
+                                    "Backup password (set)"
+                                else "Backup password (already set — type to change, blank to clear)"
+                            )
+                        },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.setBackupPassword(pwdField); pwdField = "" },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (pwdField.isEmpty()) "Clear backup password" else "Save backup password") }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Profile: ${prefs.currentProfile}", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        prefs.profiles.forEach { p ->
+                            FilterChip(
+                                selected = prefs.currentProfile == p,
+                                onClick = { viewModel.setCurrentProfile(p) },
+                                label = { Text(p) },
+                            )
+                        }
+                    }
+                    var newProfile by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = newProfile,
+                        onValueChange = { newProfile = it.take(20) },
+                        label = { Text("Add profile") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            if (newProfile.isNotBlank() && newProfile !in prefs.profiles) {
+                                viewModel.setProfiles(prefs.profiles + newProfile)
+                                newProfile = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Add") }
+                }
+            }
+        }
+        item {
             Text(
-                "Modern Music Player • v3.0",
+                "Modern Music Player • v3.1",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

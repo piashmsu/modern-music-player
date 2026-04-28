@@ -76,6 +76,34 @@ data class AppPrefs(
     val spatialWide: Boolean = false, // wide stereo / surround feel
     val prefetchEnabled: Boolean = true, // pre-resolve next YT stream
     val voiceSearchEnabled: Boolean = true,
+    // v3.1 mega batch
+    val audioOnlyMode: Boolean = true, // YouTube: never download/play video stream
+    val preCacheEnabled: Boolean = false, // cache likely-next on Wi-Fi
+    val autoSkipSilence: Boolean = false,
+    val captionsToLyrics: Boolean = true,
+    val ytMusicBackend: Boolean = false, // music.youtube.com
+    val npAnimations: Boolean = true, // Now Playing animations
+    val swipeGestures: Boolean = true,
+    val density: String = "comfortable", // compact | comfortable | spacious
+    val iconVariant: String = "classic", // classic | neon | minimal | vinyl | dark
+    val stickyLyricsNotif: Boolean = false,
+    val dailyStatsNotif: Boolean = false,
+    val workoutMode: Boolean = false,
+    val sleepMusicMode: Boolean = false,
+    val drivingMode: Boolean = false,
+    val autoEqByEnvironment: Boolean = false,
+    val autoResumeOnHeadphone: Boolean = false,
+    val backupPasswordHash: String = "", // sha256(password) hex; empty = unencrypted
+    val currentProfile: String = "default",
+    val profiles: List<String> = listOf("default"),
+    val hiddenSongs: Set<String> = emptySet(),
+    val trashedSongs: Set<String> = emptySet(),
+    val headphonePreset: String = "flat", // flat | sony_wh | airpods | boat | realme | beats
+    val bassEnhancerPro: Boolean = false,
+    val cinemaMode: Boolean = false,
+    val loudnessFix: Boolean = false,
+    val splashEnabled: Boolean = true,
+    val notifButtonStyle: String = "5", // "3" or "5"
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -139,6 +167,34 @@ class PreferencesRepository(private val context: Context) {
         val SPATIAL_WIDE = booleanPreferencesKey("spatial_wide")
         val PREFETCH = booleanPreferencesKey("prefetch")
         val VOICE_SEARCH = booleanPreferencesKey("voice_search")
+        // v3.1
+        val AUDIO_ONLY = booleanPreferencesKey("audio_only")
+        val PRECACHE = booleanPreferencesKey("precache")
+        val AUTO_SKIP_SILENCE = booleanPreferencesKey("auto_skip_silence")
+        val CAPTIONS_LYRICS = booleanPreferencesKey("captions_lyrics")
+        val YT_MUSIC = booleanPreferencesKey("yt_music")
+        val NP_ANIM = booleanPreferencesKey("np_anim")
+        val SWIPE_GESTURES = booleanPreferencesKey("swipe_gestures")
+        val DENSITY = stringPreferencesKey("density")
+        val ICON_VARIANT = stringPreferencesKey("icon_variant")
+        val STICKY_LYRICS = booleanPreferencesKey("sticky_lyrics")
+        val DAILY_STATS = booleanPreferencesKey("daily_stats")
+        val WORKOUT = booleanPreferencesKey("workout")
+        val SLEEP_MUSIC = booleanPreferencesKey("sleep_music")
+        val DRIVING = booleanPreferencesKey("driving")
+        val AUTO_EQ_ENV = booleanPreferencesKey("auto_eq_env")
+        val AUTO_RESUME_HP = booleanPreferencesKey("auto_resume_hp")
+        val BACKUP_PWD = stringPreferencesKey("backup_pwd")
+        val PROFILE = stringPreferencesKey("profile")
+        val PROFILES = stringPreferencesKey("profiles") // CSV
+        val HIDDEN = stringSetPreferencesKey("hidden")
+        val TRASHED = stringSetPreferencesKey("trashed")
+        val HP_PRESET = stringPreferencesKey("hp_preset")
+        val BASS_PRO = booleanPreferencesKey("bass_pro")
+        val CINEMA = booleanPreferencesKey("cinema")
+        val LOUDNESS_FIX = booleanPreferencesKey("loudness_fix")
+        val SPLASH = booleanPreferencesKey("splash")
+        val NOTIF_STYLE = stringPreferencesKey("notif_style")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -205,8 +261,81 @@ class PreferencesRepository(private val context: Context) {
             spatialWide = this[K.SPATIAL_WIDE] ?: false,
             prefetchEnabled = this[K.PREFETCH] ?: true,
             voiceSearchEnabled = this[K.VOICE_SEARCH] ?: true,
+            audioOnlyMode = this[K.AUDIO_ONLY] ?: true,
+            preCacheEnabled = this[K.PRECACHE] ?: false,
+            autoSkipSilence = this[K.AUTO_SKIP_SILENCE] ?: false,
+            captionsToLyrics = this[K.CAPTIONS_LYRICS] ?: true,
+            ytMusicBackend = this[K.YT_MUSIC] ?: false,
+            npAnimations = this[K.NP_ANIM] ?: true,
+            swipeGestures = this[K.SWIPE_GESTURES] ?: true,
+            density = this[K.DENSITY] ?: "comfortable",
+            iconVariant = this[K.ICON_VARIANT] ?: "classic",
+            stickyLyricsNotif = this[K.STICKY_LYRICS] ?: false,
+            dailyStatsNotif = this[K.DAILY_STATS] ?: false,
+            workoutMode = this[K.WORKOUT] ?: false,
+            sleepMusicMode = this[K.SLEEP_MUSIC] ?: false,
+            drivingMode = this[K.DRIVING] ?: false,
+            autoEqByEnvironment = this[K.AUTO_EQ_ENV] ?: false,
+            autoResumeOnHeadphone = this[K.AUTO_RESUME_HP] ?: false,
+            backupPasswordHash = this[K.BACKUP_PWD] ?: "",
+            currentProfile = this[K.PROFILE] ?: "default",
+            profiles = (this[K.PROFILES] ?: "default").split(",").filter { it.isNotBlank() },
+            hiddenSongs = this[K.HIDDEN] ?: emptySet(),
+            trashedSongs = this[K.TRASHED] ?: emptySet(),
+            headphonePreset = this[K.HP_PRESET] ?: "flat",
+            bassEnhancerPro = this[K.BASS_PRO] ?: false,
+            cinemaMode = this[K.CINEMA] ?: false,
+            loudnessFix = this[K.LOUDNESS_FIX] ?: false,
+            splashEnabled = this[K.SPLASH] ?: true,
+            notifButtonStyle = this[K.NOTIF_STYLE] ?: "5",
         )
     }
+
+    // v3.1 setters
+    suspend fun setAudioOnly(v: Boolean) = context.dataStore.edit { it[K.AUDIO_ONLY] = v }
+    suspend fun setPreCache(v: Boolean) = context.dataStore.edit { it[K.PRECACHE] = v }
+    suspend fun setAutoSkipSilence(v: Boolean) = context.dataStore.edit { it[K.AUTO_SKIP_SILENCE] = v }
+    suspend fun setCaptionsToLyrics(v: Boolean) = context.dataStore.edit { it[K.CAPTIONS_LYRICS] = v }
+    suspend fun setYtMusicBackend(v: Boolean) = context.dataStore.edit { it[K.YT_MUSIC] = v }
+    suspend fun setNpAnimations(v: Boolean) = context.dataStore.edit { it[K.NP_ANIM] = v }
+    suspend fun setSwipeGestures(v: Boolean) = context.dataStore.edit { it[K.SWIPE_GESTURES] = v }
+    suspend fun setDensity(v: String) = context.dataStore.edit { it[K.DENSITY] = v }
+    suspend fun setIconVariant(v: String) = context.dataStore.edit { it[K.ICON_VARIANT] = v }
+    suspend fun setStickyLyricsNotif(v: Boolean) = context.dataStore.edit { it[K.STICKY_LYRICS] = v }
+    suspend fun setDailyStatsNotif(v: Boolean) = context.dataStore.edit { it[K.DAILY_STATS] = v }
+    suspend fun setWorkoutMode(v: Boolean) = context.dataStore.edit { it[K.WORKOUT] = v }
+    suspend fun setSleepMusicMode(v: Boolean) = context.dataStore.edit { it[K.SLEEP_MUSIC] = v }
+    suspend fun setDrivingMode(v: Boolean) = context.dataStore.edit { it[K.DRIVING] = v }
+    suspend fun setAutoEqByEnvironment(v: Boolean) = context.dataStore.edit { it[K.AUTO_EQ_ENV] = v }
+    suspend fun setAutoResumeOnHeadphone(v: Boolean) = context.dataStore.edit { it[K.AUTO_RESUME_HP] = v }
+    suspend fun setBackupPasswordHash(v: String) = context.dataStore.edit { it[K.BACKUP_PWD] = v }
+    suspend fun setCurrentProfile(v: String) = context.dataStore.edit { it[K.PROFILE] = v }
+    suspend fun setProfiles(v: List<String>) = context.dataStore.edit {
+        it[K.PROFILES] = v.joinToString(",")
+    }
+    suspend fun toggleHidden(songId: String) = context.dataStore.edit { p ->
+        val s = (p[K.HIDDEN] ?: emptySet()).toMutableSet()
+        if (!s.add(songId)) s.remove(songId)
+        p[K.HIDDEN] = s
+    }
+    suspend fun setHidden(songs: Set<String>) = context.dataStore.edit { it[K.HIDDEN] = songs }
+    suspend fun trashSong(songId: String) = context.dataStore.edit { p ->
+        val s = (p[K.TRASHED] ?: emptySet()).toMutableSet()
+        s.add(songId)
+        p[K.TRASHED] = s
+    }
+    suspend fun restoreSong(songId: String) = context.dataStore.edit { p ->
+        val s = (p[K.TRASHED] ?: emptySet()).toMutableSet()
+        s.remove(songId)
+        p[K.TRASHED] = s
+    }
+    suspend fun emptyTrash() = context.dataStore.edit { it[K.TRASHED] = emptySet() }
+    suspend fun setHeadphonePreset(v: String) = context.dataStore.edit { it[K.HP_PRESET] = v }
+    suspend fun setBassEnhancerPro(v: Boolean) = context.dataStore.edit { it[K.BASS_PRO] = v }
+    suspend fun setCinemaMode(v: Boolean) = context.dataStore.edit { it[K.CINEMA] = v }
+    suspend fun setLoudnessFix(v: Boolean) = context.dataStore.edit { it[K.LOUDNESS_FIX] = v }
+    suspend fun setSplashEnabled(v: Boolean) = context.dataStore.edit { it[K.SPLASH] = v }
+    suspend fun setNotifButtonStyle(v: String) = context.dataStore.edit { it[K.NOTIF_STYLE] = v }
 
     suspend fun setAppLockPin(pin: String) = context.dataStore.edit { it[K.APP_LOCK_PIN] = pin }
     suspend fun setShakeToSkip(v: Boolean) = context.dataStore.edit { it[K.SHAKE_SKIP] = v }

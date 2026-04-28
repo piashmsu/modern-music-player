@@ -20,6 +20,9 @@
     <string name="tab_folders">Folders</string>
     <string name="tab_genres">Genres</string>
     <string name="tab_decades">Decades</string>
+    <string name="tab_for_you">For You</string>
+    <string name="tab_hidden">Hidden</string>
+    <string name="tab_trash">Trash</string>
 
     <!-- Now Playing -->
     <string name="now_playing">Now Playing</string>

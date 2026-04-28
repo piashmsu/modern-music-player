@@ -27,6 +27,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Folder
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -73,6 +76,7 @@ import com.gsmtrick.musicplayer.ui.PlayerViewModel
 import java.util.concurrent.TimeUnit
 
 private enum class LibTab(val titleRes: Int, val icon: ImageVector) {
+    ForYou(com.gsmtrick.musicplayer.R.string.tab_for_you, Icons.Rounded.AutoAwesome),
     Songs(com.gsmtrick.musicplayer.R.string.tab_songs, Icons.Rounded.MusicNote),
     Albums(com.gsmtrick.musicplayer.R.string.tab_albums, Icons.Rounded.Album),
     Artists(com.gsmtrick.musicplayer.R.string.tab_artists, Icons.Rounded.Person),
@@ -83,6 +87,8 @@ private enum class LibTab(val titleRes: Int, val icon: ImageVector) {
     Folders(com.gsmtrick.musicplayer.R.string.tab_folders, Icons.Rounded.Folder),
     Genres(com.gsmtrick.musicplayer.R.string.tab_genres, Icons.Rounded.QueueMusic),
     Decades(com.gsmtrick.musicplayer.R.string.tab_decades, Icons.Rounded.History),
+    Hidden(com.gsmtrick.musicplayer.R.string.tab_hidden, Icons.Rounded.VisibilityOff),
+    Trash(com.gsmtrick.musicplayer.R.string.tab_trash, Icons.Rounded.Delete),
 }
 
 @Composable
@@ -158,8 +164,25 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
 
         val q = query.trim()
         when (tab) {
+            LibTab.ForYou -> ForYouContent(
+                viewModel = viewModel,
+                state = state,
+                favorites = prefs.favorites,
+            )
             LibTab.Songs -> SongList(
-                songs = filterSongs(library.songs, q),
+                songs = filterSongs(viewModel.visibleSongs(), q),
+                state = state,
+                viewModel = viewModel,
+                favorites = prefs.favorites,
+            )
+            LibTab.Hidden -> SongList(
+                songs = filterSongs(viewModel.hiddenSongs(), q),
+                state = state,
+                viewModel = viewModel,
+                favorites = prefs.favorites,
+            )
+            LibTab.Trash -> SongList(
+                songs = filterSongs(viewModel.trashedSongs(), q),
                 state = state,
                 viewModel = viewModel,
                 favorites = prefs.favorites,
@@ -288,6 +311,66 @@ private fun filterSongs(songs: List<Song>, q: String): List<Song> {
         it.title.contains(q, true) ||
             it.artist.contains(q, true) ||
             it.album.contains(q, true)
+    }
+}
+
+@Composable
+private fun ForYouContent(
+    viewModel: PlayerViewModel,
+    state: com.gsmtrick.musicplayer.ui.PlaybackUiState,
+    favorites: Set<String>,
+) {
+    val sections = remember(viewModel.library.value, viewModel.prefs.value) {
+        listOf(
+            "Daily Mix" to viewModel.dailyMix(),
+            "On Repeat" to viewModel.onRepeatSongs(),
+            "Discovery" to viewModel.discoverySongs(),
+            "Mood: Chill" to viewModel.moodSongs("chill"),
+            "Mood: Upbeat" to viewModel.moodSongs("upbeat"),
+            "Tempo: Fast" to viewModel.tempoSongs(true),
+            "Tempo: Slow" to viewModel.tempoSongs(false),
+            "Recently played" to viewModel.recentlyPlayedSongs(),
+        ).filter { it.second.isNotEmpty() }
+    }
+    if (sections.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "Play a few songs first to see suggestions.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp)) {
+        sections.forEach { (title, songs) ->
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        if (songs.isNotEmpty()) viewModel.playSong(songs.first(), songs)
+                    }) { Text("Play") }
+                }
+            }
+            items(songs.take(8), key = { "$title:${it.id}" }) { song ->
+                SongRow(
+                    song = song,
+                    isCurrent = state.currentSong?.id == song.id,
+                    isFavorite = song.id.toString() in favorites,
+                    onClick = { viewModel.playSong(song, songs) },
+                    onToggleFavorite = { viewModel.toggleFavorite(song.id) },
+                )
+            }
+        }
     }
 }
 

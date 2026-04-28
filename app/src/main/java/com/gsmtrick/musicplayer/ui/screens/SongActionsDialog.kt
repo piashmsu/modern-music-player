@@ -14,10 +14,15 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.QrCode
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gsmtrick.musicplayer.ui.PlayerViewModel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,8 +39,10 @@ import com.gsmtrick.musicplayer.data.Song
 @Composable
 fun SongActionsDialog(song: Song, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val viewModel: PlayerViewModel = viewModel()
     var infoOpen by remember { mutableStateOf(false) }
     var tagOpen by remember { mutableStateOf(false) }
+    var qrOpen by remember { mutableStateOf(false) }
 
     // Pending tag-edit state — captured so we can re-run the update once
     // the user has granted write permission via the system dialog.
@@ -73,6 +80,19 @@ fun SongActionsDialog(song: Song, onDismiss: () -> Unit) {
                 ActionRow(Icons.Rounded.Edit, "Edit tags") {
                     tagOpen = true
                 }
+                ActionRow(Icons.Rounded.QrCode, "Share via QR") {
+                    qrOpen = true
+                }
+                ActionRow(Icons.Rounded.VisibilityOff, "Hide / unhide") {
+                    viewModel.toggleHidden(song.id.toString())
+                    Toast.makeText(context, "Visibility toggled", Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }
+                ActionRow(Icons.Rounded.Delete, "Move to trash") {
+                    viewModel.trashSong(song.id.toString())
+                    Toast.makeText(context, "Moved to trash", Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }
             }
         },
         confirmButton = {
@@ -82,6 +102,9 @@ fun SongActionsDialog(song: Song, onDismiss: () -> Unit) {
 
     if (infoOpen) {
         AudioInfoDialog(song = song, onDismiss = { infoOpen = false; onDismiss() })
+    }
+    if (qrOpen) {
+        QrShareDialog(song = song, onDismiss = { qrOpen = false; onDismiss() })
     }
     if (tagOpen) {
         TagEditorDialog(

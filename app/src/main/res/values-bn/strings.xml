@@ -20,6 +20,9 @@
     <string name="tab_folders">ফোল্ডার</string>
     <string name="tab_genres">ধরন</string>
     <string name="tab_decades">দশক</string>
+    <string name="tab_for_you">আপনার জন্য</string>
+    <string name="tab_hidden">লুকানো</string>
+    <string name="tab_trash">ট্র্যাশ</string>
 
     <!-- Now Playing -->
     <string name="now_playing">এখন বাজছে</string>

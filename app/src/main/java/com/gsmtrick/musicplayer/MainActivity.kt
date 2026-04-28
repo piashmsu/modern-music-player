@@ -1,10 +1,14 @@
 package com.gsmtrick.musicplayer
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,6 +31,7 @@ class MainActivity : ComponentActivity() {
     private var sensorManager: SensorManager? = null
     private var accel: Sensor? = null
     private var lastShakeAt = 0L
+    private var headphoneReceiver: BroadcastReceiver? = null
     private val shakeListener = object : SensorEventListener {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         override fun onSensorChanged(event: SensorEvent) {
@@ -65,6 +70,28 @@ class MainActivity : ComponentActivity() {
                         sm.registerListener(shakeListener, s, SensorManager.SENSOR_DELAY_UI)
                     } else {
                         sm.unregisterListener(shakeListener)
+                    }
+                }
+                .collect {}
+        }
+        lifecycleScope.launch {
+            viewModel.prefs
+                .distinctUntilChangedBy { it.autoResumeOnHeadphone }
+                .onEach { p ->
+                    if (p.autoResumeOnHeadphone && headphoneReceiver == null) {
+                        val r = object : BroadcastReceiver() {
+                            override fun onReceive(c: Context?, i: Intent?) {
+                                val state = i?.getIntExtra("state", -1) ?: -1
+                                if (state == 1 && viewModel.state.value.currentSong != null) {
+                                    viewModel.play()
+                                }
+                            }
+                        }
+                        registerReceiver(r, IntentFilter(Intent.ACTION_HEADSET_PLUG))
+                        headphoneReceiver = r
+                    } else if (!p.autoResumeOnHeadphone && headphoneReceiver != null) {
+                        try { unregisterReceiver(headphoneReceiver) } catch (_: Throwable) {}
+                        headphoneReceiver = null
                     }
                 }
                 .collect {}
