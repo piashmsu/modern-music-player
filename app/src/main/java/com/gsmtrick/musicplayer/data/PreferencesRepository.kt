@@ -378,6 +378,10 @@ class PreferencesRepository(private val context: Context) {
         p[K.SLEEP_FADE] = state.sleepFadeOut
     }
 
+    suspend fun setFavorites(ids: Set<String>) = context.dataStore.edit { p ->
+        p[K.FAVORITES] = ids
+    }
+
     suspend fun toggleFavorite(songId: String) = context.dataStore.edit { p ->
         val cur = p[K.FAVORITES].orEmpty().toMutableSet()
         if (!cur.add(songId)) cur.remove(songId)

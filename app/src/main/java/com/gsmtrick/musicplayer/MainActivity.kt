@@ -113,11 +113,28 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.connectController(this)
+        // Re-register shake listener if user has it enabled — distinctUntilChangedBy
+        // in onCreate won't re-emit on a stop/start cycle, so we re-register here.
+        if (viewModel.prefs.value.shakeToSkip) {
+            val sm = sensorManager
+            val s = accel
+            if (sm != null && s != null) {
+                sm.registerListener(shakeListener, s, SensorManager.SENSOR_DELAY_UI)
+            }
+        }
     }
 
     override fun onStop() {
         super.onStop()
         sensorManager?.unregisterListener(shakeListener)
         viewModel.releaseController()
+    }
+
+    override fun onDestroy() {
+        headphoneReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Throwable) {}
+            headphoneReceiver = null
+        }
+        super.onDestroy()
     }
 }

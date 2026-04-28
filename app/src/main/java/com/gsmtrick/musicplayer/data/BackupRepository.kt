@@ -119,9 +119,10 @@ class BackupRepository(
 
         val favs = p.optJSONArray("favorites")
         if (favs != null) {
-            for (i in 0 until favs.length()) {
-                runCatching { prefsRepo.toggleFavorite(favs.getString(i)) }
+            val set = (0 until favs.length()).mapNotNullTo(mutableSetOf()) {
+                runCatching { favs.getString(it) }.getOrNull()
             }
+            runCatching { prefsRepo.setFavorites(set) }
         }
     }
 
