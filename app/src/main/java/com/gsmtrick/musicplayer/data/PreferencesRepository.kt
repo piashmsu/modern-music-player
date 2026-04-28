@@ -45,6 +45,7 @@ data class AppPrefs(
     val sleepMinutes: Int = 0,
     val visualizerEnabled: Boolean = true,
     val blurredBackground: Boolean = true,
+    val lockScreenPlayer: Boolean = true, // auto-show full lock screen player when device is locked
     val effects: EffectsState = EffectsState(),
     val favorites: Set<String> = emptySet(), // song ids
     val customEqPresets: List<EqPreset> = emptyList(),
@@ -67,6 +68,7 @@ class PreferencesRepository(private val context: Context) {
         val SLEEP = intPreferencesKey("sleep")
         val VIS_ON = booleanPreferencesKey("vis_on")
         val BLUR_BG = booleanPreferencesKey("blur_bg")
+        val LOCK_PLAYER = booleanPreferencesKey("lock_player")
 
         val EQ_ON = booleanPreferencesKey("eq_on")
         val EQ_PRESET = stringPreferencesKey("eq_preset")
@@ -110,6 +112,7 @@ class PreferencesRepository(private val context: Context) {
             sleepMinutes = this[K.SLEEP] ?: 0,
             visualizerEnabled = this[K.VIS_ON] ?: true,
             blurredBackground = this[K.BLUR_BG] ?: true,
+            lockScreenPlayer = this[K.LOCK_PLAYER] ?: true,
             effects = EffectsState(
                 equalizerEnabled = this[K.EQ_ON] ?: false,
                 preset = this[K.EQ_PRESET] ?: "Custom",
@@ -146,6 +149,8 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[K.VIS_ON] = enabled }
     suspend fun setBlurredBackground(enabled: Boolean) =
         context.dataStore.edit { it[K.BLUR_BG] = enabled }
+    suspend fun setLockScreenPlayer(enabled: Boolean) =
+        context.dataStore.edit { it[K.LOCK_PLAYER] = enabled }
 
     suspend fun setEffects(state: EffectsState) = context.dataStore.edit { p ->
         p[K.EQ_ON] = state.equalizerEnabled

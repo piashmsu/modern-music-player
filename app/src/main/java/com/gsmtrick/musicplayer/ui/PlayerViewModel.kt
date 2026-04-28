@@ -151,7 +151,8 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
                 _state.value.currentSong?.let {
                     viewModelScope.launch { prefsRepo.recordPlay(it.id.toString()) }
                 }
-                loadLyricsForCurrent()
+                // syncFromController (triggered via onEvents) loads lyrics
+                // after the state has been updated to the new song.
             }
         })
         positionJob?.cancel()
@@ -170,14 +171,22 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         }
     }
 
+    private var lyricsJob: Job? = null
+
     private fun loadLyricsForCurrent() {
         val s = _state.value.currentSong
+        lyricsJob?.cancel()
         if (s == null) {
             _lyrics.value = null
             return
         }
-        viewModelScope.launch {
-            _lyrics.value = lyricsRepo.loadLyrics(s)
+        val targetId = s.id
+        lyricsJob = viewModelScope.launch {
+            val loaded = lyricsRepo.loadLyrics(s)
+            // Discard if the user/player has moved on to a different song.
+            if (_state.value.currentSong?.id == targetId) {
+                _lyrics.value = loaded
+            }
         }
     }
 
@@ -199,8 +208,9 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         }
         if (song != null && song.id != previous?.id) {
             loadLyricsForCurrent()
-            // Apply per-song speed override if set.
-            _prefs.value.perSongSpeed[song.id.toString()]?.let { c.setPlaybackSpeed(it) }
+            // Per-song speed override is applied by MusicPlaybackService, which
+            // observes both the prefs flow and currentMediaItem changes so that
+            // global-speed re-applications don't clobber the override.
         }
     }
 
@@ -328,6 +338,10 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun setBlurredBackground(enabled: Boolean) {
         viewModelScope.launch { prefsRepo.setBlurredBackground(enabled) }
+    }
+
+    fun setLockScreenPlayer(enabled: Boolean) {
+        viewModelScope.launch { prefsRepo.setLockScreenPlayer(enabled) }
     }
 
     fun setSpeed(speed: Float) {

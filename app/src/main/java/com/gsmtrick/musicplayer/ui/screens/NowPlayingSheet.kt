@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
@@ -63,6 +64,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.platform.LocalContext
+import com.gsmtrick.musicplayer.lockscreen.LockScreenActivity
+import android.content.Intent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -243,6 +247,14 @@ private fun FullPlayer(
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    val ctx = LocalContext.current
+                    IconButton(onClick = {
+                        ctx.startActivity(
+                            Intent(ctx, LockScreenActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }) {
+                        Icon(Icons.Rounded.Lock, null)
                     }
                     IconButton(onClick = { speedOpen = true }) {
                         Icon(Icons.Rounded.Speed, null)

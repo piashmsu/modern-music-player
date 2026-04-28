@@ -1,7 +1,10 @@
 package com.gsmtrick.musicplayer.playback
 
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
@@ -15,6 +18,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.gsmtrick.musicplayer.MainActivity
+import com.gsmtrick.musicplayer.lockscreen.LockScreenActivity
 import com.gsmtrick.musicplayer.data.EffectsState
 import com.gsmtrick.musicplayer.data.PreferencesRepository
 import com.gsmtrick.musicplayer.effects.AudioEffectsController
@@ -39,6 +43,24 @@ class MusicPlaybackService : MediaSessionService() {
 
     private var sleepJob: Job? = null
     private var fadeOutEnabled: Boolean = true
+    private var lastSleepMinutes: Int = 0
+    private var perSongSpeed: Map<String, Float> = emptyMap()
+    private var globalSpeed: Float = 1.0f
+    private var pitchSemitones: Float = 0f
+    private var lockScreenPlayerEnabled: Boolean = true
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_OFF &&
+                lockScreenPlayerEnabled &&
+                player?.isPlaying == true
+            ) {
+                val i = Intent(this@MusicPlaybackService, LockScreenActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { startActivity(i) }
+            }
+        }
+    }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private val channelMix = ChannelMixingAudioProcessor()
@@ -102,14 +124,38 @@ class MusicPlaybackService : MediaSessionService() {
             prefs.prefs.collectLatest { p ->
                 effects.apply(p.effects)
                 applyChannelMix(p.effects)
-                exoPlayer.playbackParameters = PlaybackParameters(
-                    p.playbackSpeed.coerceIn(0.5f, 2f),
-                    pitchMultiplier(p.effects.pitchSemitones),
-                )
+                globalSpeed = p.playbackSpeed.coerceIn(0.5f, 2f)
+                pitchSemitones = p.effects.pitchSemitones
+                perSongSpeed = p.perSongSpeed
+                lockScreenPlayerEnabled = p.lockScreenPlayer
+                applyPlaybackParameters(exoPlayer)
                 fadeOutEnabled = p.effects.sleepFadeOut
-                handleSleepTimer(p.sleepMinutes)
+                if (p.sleepMinutes != lastSleepMinutes) {
+                    lastSleepMinutes = p.sleepMinutes
+                    handleSleepTimer(p.sleepMinutes)
+                }
             }
         }
+
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                applyPlaybackParameters(exoPlayer)
+            }
+        })
+
+        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+    }
+
+    private fun applyPlaybackParameters(p: ExoPlayer) {
+        val mediaId = p.currentMediaItem?.mediaId
+        val effectiveSpeed = mediaId
+            ?.let { perSongSpeed[it] }
+            ?.coerceIn(0.5f, 2f)
+            ?: globalSpeed
+        p.playbackParameters = PlaybackParameters(
+            effectiveSpeed,
+            pitchMultiplier(pitchSemitones),
+        )
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -201,6 +247,7 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(screenReceiver) }
         scope.cancel()
         effects.release()
         mediaSession?.run {

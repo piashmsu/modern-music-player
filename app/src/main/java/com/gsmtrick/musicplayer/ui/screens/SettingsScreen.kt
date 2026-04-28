@@ -160,6 +160,20 @@ fun SettingsScreen(viewModel: PlayerViewModel) {
         }
         item {
             SettingCard(
+                "Lock screen player",
+                "Auto-show vinyl player + lyrics when device locks",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.lockScreenPlayer,
+                        onCheckedChange = { viewModel.setLockScreenPlayer(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
                 "Album-art adaptive theme",
                 "Tint UI to match the playing album art",
             ) {
