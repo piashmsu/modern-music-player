@@ -229,6 +229,51 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         if (c.isPlaying) c.pause() else c.play()
     }
 
+    /**
+     * Play a remote audio stream (e.g. a YouTube extracted audio URL).
+     * The mediaId encodes the source page URL so it can be re-resolved later.
+     */
+    fun playRemoteAudio(
+        streamUrl: String,
+        title: String,
+        artist: String,
+        artworkUrl: String?,
+        durationMs: Long,
+        sourceUrl: String,
+    ) {
+        val c = controller ?: return
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(artist)
+            .apply {
+                if (artworkUrl != null) setArtworkUri(android.net.Uri.parse(artworkUrl))
+            }
+            .build()
+        val item = MediaItem.Builder()
+            .setMediaId("yt:$sourceUrl")
+            .setUri(streamUrl)
+            .setMediaMetadata(metadata)
+            .build()
+
+        // Render a synthetic Song so the rest of the UI (Now Playing, lock
+        // screen, mini player) can show metadata.
+        val syntheticSong = Song(
+            id = -(sourceUrl.hashCode().toLong()),
+            title = title,
+            artist = artist,
+            album = "YouTube",
+            albumId = -1L,
+            durationMs = durationMs,
+            uri = android.net.Uri.parse(streamUrl),
+            artworkUri = artworkUrl?.let { android.net.Uri.parse(it) },
+        )
+        _state.update { it.copy(currentSong = syntheticSong, queue = listOf(syntheticSong)) }
+
+        c.setMediaItem(item)
+        c.prepare()
+        c.play()
+    }
+
     fun next() = controller?.seekToNext()
     fun previous() = controller?.seekToPrevious()
     fun seekTo(positionMs: Long) = controller?.seekTo(positionMs)

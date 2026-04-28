@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
 import com.gsmtrick.musicplayer.ui.screens.SettingsScreen
+import com.gsmtrick.musicplayer.ui.screens.YoutubeScreen
 import com.gsmtrick.musicplayer.ui.theme.ModernMusicTheme
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -88,6 +90,12 @@ fun AppRoot(viewModel: PlayerViewModel) {
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
+                        selected = current == "youtube",
+                        onClick = { nav.navigate("youtube") },
+                        icon = { Icon(Icons.Rounded.Search, null) },
+                        label = { Text("YouTube") },
+                    )
+                    NavigationBarItem(
                         selected = current == "effects",
                         onClick = { nav.navigate("effects") },
                         icon = { Icon(Icons.Rounded.Equalizer, null) },
@@ -111,6 +119,7 @@ fun AppRoot(viewModel: PlayerViewModel) {
             Box(Modifier.fillMaxSize().padding(padding)) {
                 NavHost(navController = nav, startDestination = "library") {
                     composable("library") { LibraryScreen(viewModel) }
+                    composable("youtube") { YoutubeScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
                     composable("settings") { SettingsScreen(viewModel) }
                     composable("about") { AboutScreen() }
