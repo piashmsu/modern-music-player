@@ -95,4 +95,16 @@
     <string name="stats_unique_artists">Unique artists</string>
     <string name="stats_top_artists">Top artists</string>
     <string name="stats_top_songs">Top songs</string>
+    <!-- v3.2 -->
+    <string name="settings_lastfm">Last.fm scrobbling</string>
+    <string name="settings_lastfm_login">Login to Last.fm</string>
+    <string name="settings_lastfm_logout">Logout</string>
+    <string name="settings_radio">Internet radio</string>
+    <string name="settings_radio_open">Open radio</string>
+    <string name="settings_bangla_numerals">Bangla numerals</string>
+    <string name="settings_auto_tag">Auto-tag from filename</string>
+    <string name="settings_crossfade">Crossfade</string>
+    <string name="settings_skip_silence">Skip silence</string>
+    <string name="radio_title">Internet Radio</string>
+    <string name="radio_add_station">Add station</string>
 </resources>

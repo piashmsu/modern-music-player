@@ -87,7 +87,12 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
     private var sleepJob: Job? = null
 
     init {
-        viewModelScope.launch { prefsRepo.prefs.collect { p -> _prefs.value = p } }
+        viewModelScope.launch {
+            prefsRepo.prefs.collect { p ->
+                _prefs.value = p
+                com.gsmtrick.musicplayer.util.banglaNumeralsGlobal = p.banglaNumerals
+            }
+        }
         viewModelScope.launch {
             playlistRepo.load()
             playlistRepo.playlists.collect { _playlists.value = it }
@@ -111,7 +116,7 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun loadLibrary() {
         viewModelScope.launch {
-            val songs = musicRepo.loadSongs()
+            val songs = musicRepo.loadSongs(_prefs.value.autoTagFromFilename)
             val albums = runCatching { musicRepo.loadAlbums() }.getOrDefault(emptyList())
             val artists = runCatching { musicRepo.loadArtists() }.getOrDefault(emptyList())
             val genres = runCatching { musicRepo.loadGenres() }.getOrDefault(emptyList())
@@ -643,6 +648,60 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         val hash = if (plain.isEmpty()) "" else java.security.MessageDigest.getInstance("SHA-256")
             .digest(plain.toByteArray()).joinToString("") { "%02x".format(it) }
         prefsRepo.setBackupPasswordHash(hash)
+    }
+
+    // v3.2 setters
+    fun setLastFmEnabled(v: Boolean) = viewModelScope.launch { prefsRepo.setLastFmEnabled(v) }
+    fun setBanglaNumerals(v: Boolean) = viewModelScope.launch {
+        prefsRepo.setBanglaNumerals(v)
+        com.gsmtrick.musicplayer.util.banglaNumeralsGlobal = v
+    }
+    fun setLastFmWifiOnly(v: Boolean) = viewModelScope.launch { prefsRepo.setLastFmWifiOnly(v) }
+    fun setAutoTagFromFilename(v: Boolean) = viewModelScope.launch { prefsRepo.setAutoTagFromFilename(v) }
+    fun setLastRadio(id: String) = viewModelScope.launch { prefsRepo.setLastRadio(id) }
+    fun saveRadioStation(station: com.gsmtrick.musicplayer.data.RadioStation) =
+        viewModelScope.launch { prefsRepo.saveRadioStation(station) }
+    fun deleteRadioStation(id: String) =
+        viewModelScope.launch { prefsRepo.deleteRadioStation(id) }
+    fun clearLastFmSession() = viewModelScope.launch { prefsRepo.clearLastFmSession() }
+
+    /**
+     * Authenticate with Last.fm using mobile-session flow. On success, the
+     * server returns a session key which is persisted and used for all
+     * subsequent scrobbles. Returns null on success, or the error message.
+     */
+    suspend fun lastFmLogin(username: String, password: String): String? {
+        val repo = com.gsmtrick.musicplayer.data.LastFmRepository(getApplication())
+        if (!repo.isConfigured) return "Last.fm API key not built into this APK"
+        val r = repo.authenticate(username, password)
+        return if (r.isSuccess) {
+            prefsRepo.setLastFmSession(username, r.getOrNull().orEmpty())
+            null
+        } else {
+            r.exceptionOrNull()?.message ?: "Login failed"
+        }
+    }
+
+    /**
+     * Play an arbitrary streaming URL (used for internet radio). Builds a
+     * synthetic MediaItem and replaces the current queue with just that
+     * stream so transport controls keep working.
+     */
+    fun playStreamUrl(name: String, url: String) {
+        val c = controller ?: return
+        val item = androidx.media3.common.MediaItem.Builder()
+            .setUri(url)
+            .setMediaId("radio:$url")
+            .setMediaMetadata(
+                androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(name)
+                    .setArtist("Radio")
+                    .build()
+            )
+            .build()
+        c.setMediaItems(listOf(item), 0, 0)
+        c.prepare()
+        c.play()
     }
 
     suspend fun exportBackup(uri: android.net.Uri): Boolean {

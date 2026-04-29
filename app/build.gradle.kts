@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Read optional Last.fm API key from local.properties (preferred) or from
+// the LASTFM_API_KEY environment variable. Never commit the key — leaving
+// it empty disables scrobbling at runtime.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val lastfmApiKey: String =
+    localProps.getProperty("lastfm.apiKey") ?: System.getenv("LASTFM_API_KEY") ?: ""
+val lastfmApiSecret: String =
+    localProps.getProperty("lastfm.apiSecret") ?: System.getenv("LASTFM_API_SECRET") ?: ""
 
 android {
     namespace = "com.gsmtrick.musicplayer"
@@ -11,12 +25,15 @@ android {
         applicationId = "com.gsmtrick.musicplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 7
-        versionName = "3.1"
+        versionCode = 8
+        versionName = "3.2"
 
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "LASTFM_API_KEY", "\"${lastfmApiKey}\"")
+        buildConfigField("String", "LASTFM_API_SECRET", "\"${lastfmApiSecret}\"")
     }
 
     buildTypes {

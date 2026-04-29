@@ -36,7 +36,13 @@ data class Folder(
 
 class MusicRepository(private val context: Context) {
 
-    suspend fun loadSongs(): List<Song> = withContext(Dispatchers.IO) {
+    /**
+     * Load songs with optional auto-tag fallback. When [autoTagFromFilename]
+     * is true and the MediaStore reports a placeholder title (e.g. matches
+     * the filename) or an "Unknown Artist" artist, the file name is parsed
+     * via [com.gsmtrick.musicplayer.util.AutoTagger] for nicer display.
+     */
+    suspend fun loadSongs(autoTagFromFilename: Boolean = false): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
@@ -79,10 +85,25 @@ class MusicRepository(private val context: Context) {
                     albumId
                 )
                 val data = c.getString(dataCol)
+                var title = c.getString(titleCol) ?: "Unknown"
+                var artist = c.getString(artistCol) ?: "Unknown Artist"
+                if (autoTagFromFilename && data != null) {
+                    val baseName = data.substringAfterLast('/')
+                    val placeholderTitle = title.equals(baseName.substringBeforeLast('.'), true) ||
+                        title.equals("Unknown", true) || title.isBlank()
+                    val placeholderArtist = artist.equals("Unknown Artist", true) ||
+                        artist.equals("<unknown>", true) || artist.isBlank()
+                    if (placeholderTitle || placeholderArtist) {
+                        val guessed = com.gsmtrick.musicplayer.util.AutoTagger
+                            .guess(baseName, title, artist)
+                        if (placeholderTitle) title = guessed.title
+                        if (placeholderArtist) artist = guessed.artist
+                    }
+                }
                 songs += Song(
                     id = id,
-                    title = c.getString(titleCol) ?: "Unknown",
-                    artist = c.getString(artistCol) ?: "Unknown Artist",
+                    title = title,
+                    artist = artist,
                     album = c.getString(albumCol) ?: "",
                     albumId = albumId,
                     durationMs = c.getLong(durationCol),

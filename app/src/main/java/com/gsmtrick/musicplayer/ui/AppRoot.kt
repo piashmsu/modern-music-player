@@ -40,6 +40,7 @@ import com.gsmtrick.musicplayer.ui.screens.AppLockScreen
 import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
+import com.gsmtrick.musicplayer.ui.screens.RadioScreen
 import com.gsmtrick.musicplayer.ui.screens.SettingsScreen
 import com.gsmtrick.musicplayer.ui.screens.StatsScreen
 import com.gsmtrick.musicplayer.ui.screens.YoutubeScreen
@@ -147,10 +148,15 @@ fun AppRoot(viewModel: PlayerViewModel) {
                     composable("youtube") { YoutubeScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
                     composable("settings") {
-                        SettingsScreen(viewModel, onOpenStats = { nav.navigate("stats") })
+                        SettingsScreen(
+                            viewModel,
+                            onOpenStats = { nav.navigate("stats") },
+                            onOpenRadio = { nav.navigate("radio") },
+                        )
                     }
                     composable("about") { AboutScreen() }
                     composable("stats") { StatsScreen(viewModel, onBack = { nav.popBackStack() }) }
+                    composable("radio") { RadioScreen(viewModel) }
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)

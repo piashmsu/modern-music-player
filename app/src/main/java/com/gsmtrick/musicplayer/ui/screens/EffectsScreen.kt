@@ -122,6 +122,15 @@ private val EQ_PRESETS: Map<String, List<Short>> = linkedMapOf(
     "Treble Boost" to shorts(0, 0, 0, 0, 0, 100, 300, 500, 600, 700),
     "Treble Reducer" to shorts(0, 0, 0, 0, 0, -100, -300, -500, -600, -700),
     "Loudness" to shorts(600, 400, 0, 0, -200, -200, 0, 0, 400, 600),
+    // v3.2 — Bangla folk / Indian-subcontinent presets. These shapes are
+    // tuned to lift the mid-bass that carries dotara/khol percussion and
+    // the upper-mids where harmonium and tabla-bayan resonate.
+    "Baul (বাউল)" to shorts(500, 400, 200, 100, 200, 300, 200, 100, 0, -100),
+    "Rabindra (রবীন্দ্র)" to shorts(200, 100, 100, 200, 300, 300, 200, 100, 0, -100),
+    "Nazrul (নজরুল)" to shorts(400, 300, 200, 100, 200, 300, 300, 200, 100, 0),
+    "Adhunik (আধুনিক)" to shorts(300, 200, 100, 100, 200, 300, 300, 200, 200, 100),
+    "Bangla Pop" to shorts(500, 400, 200, 0, 100, 200, 300, 400, 400, 300),
+    "Qawwali" to shorts(400, 500, 400, 200, 100, 200, 300, 400, 300, 200),
 )
 
 @Composable

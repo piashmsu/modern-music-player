@@ -17,6 +17,9 @@ object IconSwitcher {
         "minimal" to "$PKG.IconMinimal",
         "vinyl" to "$PKG.IconVinyl",
         "dark" to "$PKG.IconDark",
+        "sunset" to "$PKG.IconSunset",
+        "ocean" to "$PKG.IconOcean",
+        "gold" to "$PKG.IconGold",
     )
 
     fun applyIconVariant(context: Context, variant: String) {

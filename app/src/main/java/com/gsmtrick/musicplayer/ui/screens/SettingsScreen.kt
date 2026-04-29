@@ -53,11 +53,33 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
 
 @Composable
-fun SettingsScreen(viewModel: PlayerViewModel, onOpenStats: () -> Unit = {}) {
+fun SettingsScreen(
+    viewModel: PlayerViewModel,
+    onOpenStats: () -> Unit = {},
+    onOpenRadio: () -> Unit = {},
+) {
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pinDialog by remember { mutableStateOf(false) }
+    var lastFmDialog by remember { mutableStateOf(false) }
+
+    if (lastFmDialog) {
+        LastFmLoginDialog(
+            currentUser = prefs.lastfmUsername,
+            isLoggedIn = prefs.lastfmSessionKey.isNotEmpty(),
+            onDismiss = { lastFmDialog = false },
+            onLogout = { viewModel.clearLastFmSession(); lastFmDialog = false },
+            onLogin = { user, pass ->
+                scope.launch {
+                    val err = viewModel.lastFmLogin(user, pass)
+                    val msg = err ?: "Logged in to Last.fm as $user"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    if (err == null) lastFmDialog = false
+                }
+            },
+        )
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -544,7 +566,7 @@ fun SettingsScreen(viewModel: PlayerViewModel, onOpenStats: () -> Unit = {}) {
                     Spacer(Modifier.height(8.dp))
                     Text("App icon", style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("classic", "neon", "minimal", "vinyl", "dark").forEach { i ->
+                        listOf("classic", "neon", "minimal", "vinyl", "dark", "sunset", "ocean", "gold").forEach { i ->
                             FilterChip(
                                 selected = prefs.iconVariant == i,
                                 onClick = {
@@ -660,14 +682,121 @@ fun SettingsScreen(viewModel: PlayerViewModel, onOpenStats: () -> Unit = {}) {
             }
         }
         item {
+            SettingCard("v3.2 — Last.fm scrobbling", if (prefs.lastfmSessionKey.isEmpty()) "Not connected" else "Logged in as ${prefs.lastfmUsername}") {
+                Column {
+                    SwitchRow("Enable scrobbling", prefs.lastfmEnabled && prefs.lastfmSessionKey.isNotEmpty()) { v ->
+                        viewModel.setLastFmEnabled(v)
+                    }
+                    SwitchRow("Wi-Fi only", prefs.lastfmScrobbleOverWifi) { viewModel.setLastFmWifiOnly(it) }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { lastFmDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (prefs.lastfmSessionKey.isEmpty()) "Login to Last.fm" else "Manage Last.fm account")
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.2 — Internet Radio", "${prefs.radioStations.size} saved stations + curated defaults") {
+                OutlinedButton(
+                    onClick = onOpenRadio,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Open Radio") }
+            }
+        }
+        item {
+            SettingCard("v3.2 — Bangla numerals", "Show ০-৯ in durations and counts") {
+                SwitchRow("Enable Bangla numerals", prefs.banglaNumerals) {
+                    viewModel.setBanglaNumerals(it)
+                }
+            }
+        }
+        item {
+            SettingCard("v3.2 — Auto-tag from filename", "Guess title/artist from \"Artist - Title.mp3\" patterns when MediaStore tags are missing") {
+                SwitchRow("Enable auto-tag", prefs.autoTagFromFilename) {
+                    viewModel.setAutoTagFromFilename(it)
+                }
+            }
+        }
+        item {
+            SettingCard("v3.2 — Crossfade", if (prefs.effects.crossfadeSec == 0) "Off" else "${prefs.effects.crossfadeSec}s") {
+                Slider(
+                    value = prefs.effects.crossfadeSec.toFloat(),
+                    valueRange = 0f..12f,
+                    steps = 11,
+                    onValueChange = { v ->
+                        viewModel.updateEffects { it.copy(crossfadeSec = v.toInt()) }
+                    },
+                )
+            }
+        }
+        item {
+            SettingCard("v3.2 — Skip silence", "Auto-skip silent parts of songs (Media3 native)") {
+                SwitchRow("Enable", prefs.autoSkipSilence) { viewModel.setAutoSkipSilence(it) }
+            }
+        }
+        item {
             Text(
-                "Modern Music Player • v3.1",
+                "Modern Music Player • v3.2",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
             )
         }
     }
+}
+
+@Composable
+private fun LastFmLoginDialog(
+    currentUser: String,
+    isLoggedIn: Boolean,
+    onDismiss: () -> Unit,
+    onLogout: () -> Unit,
+    onLogin: (String, String) -> Unit,
+) {
+    var user by remember { mutableStateOf(currentUser) }
+    var pass by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isLoggedIn) "Last.fm — manage" else "Last.fm — login") },
+        text = {
+            Column {
+                if (isLoggedIn) {
+                    Text("Logged in as $currentUser")
+                } else {
+                    Text("Enter your Last.fm username and password. They are sent only to last.fm to obtain a session token.")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = user, onValueChange = { user = it.trim().take(40) },
+                    label = { Text("Username") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), enabled = !isLoggedIn,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (!isLoggedIn) {
+                    OutlinedTextField(
+                        value = pass, onValueChange = { pass = it.take(80) },
+                        label = { Text("Password") }, singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (isLoggedIn) {
+                TextButton(onClick = onLogout) { Text("Logout") }
+            } else {
+                TextButton(
+                    enabled = user.isNotBlank() && pass.isNotBlank(),
+                    onClick = { onLogin(user, pass); pass = "" },
+                ) { Text("Login") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
