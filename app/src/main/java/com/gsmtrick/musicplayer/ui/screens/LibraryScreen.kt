@@ -880,5 +880,8 @@ internal fun formatDuration(ms: Long): String {
     val total = TimeUnit.MILLISECONDS.toSeconds(ms)
     val m = total / 60
     val s = total % 60
-    return "%d:%02d".format(m, s)
+    val raw = "%d:%02d".format(m, s)
+    return com.gsmtrick.musicplayer.util.banglaNumeralsIf(
+        com.gsmtrick.musicplayer.util.banglaNumeralsGlobal, raw
+    )
 }

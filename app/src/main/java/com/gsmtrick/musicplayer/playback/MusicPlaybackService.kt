@@ -20,7 +20,10 @@ import androidx.media3.session.MediaSessionService
 import com.gsmtrick.musicplayer.MainActivity
 import com.gsmtrick.musicplayer.lockscreen.LockScreenActivity
 import com.gsmtrick.musicplayer.data.EffectsState
+import com.gsmtrick.musicplayer.data.LastFmRepository
+import com.gsmtrick.musicplayer.data.MusicRepository
 import com.gsmtrick.musicplayer.data.PreferencesRepository
+import com.gsmtrick.musicplayer.data.Song
 import com.gsmtrick.musicplayer.effects.AudioEffectsController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +33,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -48,6 +52,19 @@ class MusicPlaybackService : MediaSessionService() {
     private var globalSpeed: Float = 1.0f
     private var pitchSemitones: Float = 0f
     private var lockScreenPlayerEnabled: Boolean = true
+
+    // Crossfade state
+    private var crossfadeSec: Int = 0
+    private var crossfadeJob: Job? = null
+    private var fadeInJob: Job? = null
+    private var baseVolume: Float = 1f
+
+    // Last.fm scrobbling state
+    private val lastfmRepo by lazy { LastFmRepository(applicationContext) }
+    private val musicRepo by lazy { MusicRepository(applicationContext) }
+    private var currentSongStartedAtSec: Long = 0L
+    private var currentScrobbleSong: Song? = null
+    private var scrobbleJob: Job? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -134,6 +151,8 @@ class MusicPlaybackService : MediaSessionService() {
                 lockScreenPlayerEnabled = p.lockScreenPlayer
                 applyPlaybackParameters(exoPlayer)
                 fadeOutEnabled = p.effects.sleepFadeOut
+                crossfadeSec = p.effects.crossfadeSec.coerceIn(0, 12)
+                exoPlayer.skipSilenceEnabled = p.autoSkipSilence
                 if (p.sleepMinutes != lastSleepMinutes) {
                     lastSleepMinutes = p.sleepMinutes
                     handleSleepTimer(p.sleepMinutes)
@@ -141,9 +160,20 @@ class MusicPlaybackService : MediaSessionService() {
             }
         }
 
+        // Drive crossfade volume schedule and Last.fm now-playing/scrobble timing.
+        scope.launch { runCrossfadeAndScrobbleLoop(exoPlayer) }
+
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                 applyPlaybackParameters(exoPlayer)
+                // Reset crossfade volume to baseline at every track change so a
+                // freshly-started song never inherits a half-faded volume.
+                runCatching { exoPlayer.volume = baseVolume }
+                fadeInJob?.cancel()
+                if (crossfadeSec > 0) {
+                    fadeInJob = scope.launch { fadeIn(exoPlayer, crossfadeSec) }
+                }
+                onTrackStarted(mediaItem?.mediaId)
             }
         })
 
@@ -260,6 +290,93 @@ class MusicPlaybackService : MediaSessionService() {
     private fun pitchMultiplier(semitones: Float): Float {
         val s = semitones.coerceIn(-12f, 12f)
         return Math.pow(2.0, s / 12.0).toFloat()
+    }
+
+    /**
+     * Lightweight loop that polls the player position to drive:
+     *  1. End-of-track volume fade-out for crossfade transitions.
+     *  2. Last.fm scrobble dispatch once the song has been played for the
+     *     standard >=30 s and >= 50 % rule.
+     */
+    private suspend fun runCrossfadeAndScrobbleLoop(p: ExoPlayer) {
+        var lastFadeApplied = false
+        while (true) {
+            val pos = p.currentPosition.coerceAtLeast(0)
+            val dur = p.duration
+            val playing = p.isPlaying
+            val cf = crossfadeSec
+            // Crossfade tail fade-out: smoothly drop volume during the last
+            // [cf] seconds of the track. Skip when paused or when the user
+            // disabled crossfade.
+            if (playing && cf > 0 && dur > 0 && dur != C.TIME_UNSET) {
+                val remaining = dur - pos
+                val fadeMs = (cf * 1000L).coerceAtMost(dur / 2)
+                if (remaining in 1..fadeMs) {
+                    val v = (remaining.toFloat() / fadeMs.toFloat()).coerceIn(0f, 1f)
+                    p.volume = baseVolume * v
+                    lastFadeApplied = true
+                } else if (lastFadeApplied) {
+                    p.volume = baseVolume
+                    lastFadeApplied = false
+                }
+            } else if (lastFadeApplied) {
+                p.volume = baseVolume
+                lastFadeApplied = false
+            }
+
+            // Last.fm scrobble dispatch: send once we cross the 50%/4-min mark.
+            val song = currentScrobbleSong
+            if (song != null && playing && scrobbleJob == null) {
+                val played = pos
+                val durMs = if (dur > 0 && dur != C.TIME_UNSET) dur else song.durationMs
+                val threshold = minOf(durMs / 2, 4 * 60_000L)
+                if (played >= threshold && played >= 30_000L) {
+                    val s = song
+                    val started = currentSongStartedAtSec
+                    scrobbleJob = scope.launch(Dispatchers.IO) {
+                        runCatching {
+                            val pp = prefs.prefs.first()
+                            if (pp.lastfmEnabled && pp.lastfmSessionKey.isNotEmpty()) {
+                                lastfmRepo.scrobble(pp.lastfmSessionKey, s, started)
+                            }
+                        }
+                    }
+                }
+            }
+            delay(500)
+        }
+    }
+
+    private suspend fun fadeIn(p: ExoPlayer, seconds: Int) {
+        if (seconds <= 0) return
+        val totalMs = seconds * 1000L
+        val steps = 30
+        val stepDelay = totalMs / steps
+        for (i in 0..steps) {
+            val v = baseVolume * (i.toFloat() / steps).coerceIn(0f, 1f)
+            runCatching { p.volume = v }
+            delay(stepDelay)
+        }
+        runCatching { p.volume = baseVolume }
+    }
+
+    private fun onTrackStarted(mediaId: String?) {
+        currentScrobbleSong = null
+        scrobbleJob?.cancel()
+        scrobbleJob = null
+        if (mediaId == null) return
+        currentSongStartedAtSec = System.currentTimeMillis() / 1000L
+        scope.launch(Dispatchers.IO) {
+            val pp = runCatching { prefs.prefs.first() }.getOrNull() ?: return@launch
+            if (!pp.lastfmEnabled || pp.lastfmSessionKey.isEmpty()) return@launch
+            // Resolve song metadata via MediaStore lookup. mediaId is the song
+            // row id stringified; loadSongs() returns the entire library so we
+            // pick from there for accurate duration/artist/album.
+            val songs = runCatching { musicRepo.loadSongs() }.getOrNull() ?: return@launch
+            val song = songs.firstOrNull { it.id.toString() == mediaId } ?: return@launch
+            currentScrobbleSong = song
+            runCatching { lastfmRepo.nowPlaying(pp.lastfmSessionKey, song) }
+        }
     }
 
     private fun handleSleepTimer(minutes: Int) {

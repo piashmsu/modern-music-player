@@ -85,7 +85,7 @@ data class AppPrefs(
     val npAnimations: Boolean = true, // Now Playing animations
     val swipeGestures: Boolean = true,
     val density: String = "comfortable", // compact | comfortable | spacious
-    val iconVariant: String = "classic", // classic | neon | minimal | vinyl | dark
+    val iconVariant: String = "classic", // classic | neon | minimal | vinyl | dark | sunset | ocean | gold
     val stickyLyricsNotif: Boolean = false,
     val dailyStatsNotif: Boolean = false,
     val workoutMode: Boolean = false,
@@ -104,6 +104,16 @@ data class AppPrefs(
     val loudnessFix: Boolean = false,
     val splashEnabled: Boolean = true,
     val notifButtonStyle: String = "5", // "3" or "5"
+    // v3.2 mega batch
+    val banglaNumerals: Boolean = false,
+    val lastfmEnabled: Boolean = false,
+    val lastfmUsername: String = "",
+    val lastfmSessionKey: String = "",
+    val lastfmScrobbleOverWifi: Boolean = false, // false = always; true = wifi only
+    val radioStations: List<RadioStation> = emptyList(), // user-added; defaults shown separately
+    val lastRadioId: String = "",
+    val tabOrder: List<String> = emptyList(), // empty -> use default tab order
+    val autoTagFromFilename: Boolean = false,
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -195,6 +205,16 @@ class PreferencesRepository(private val context: Context) {
         val LOUDNESS_FIX = booleanPreferencesKey("loudness_fix")
         val SPLASH = booleanPreferencesKey("splash")
         val NOTIF_STYLE = stringPreferencesKey("notif_style")
+        // v3.2
+        val BANGLA_NUMS = booleanPreferencesKey("bangla_nums")
+        val LASTFM_ON = booleanPreferencesKey("lastfm_on")
+        val LASTFM_USER = stringPreferencesKey("lastfm_user")
+        val LASTFM_SK = stringPreferencesKey("lastfm_sk")
+        val LASTFM_WIFI = booleanPreferencesKey("lastfm_wifi")
+        val RADIO_STATIONS = stringPreferencesKey("radio_stations") // JSON
+        val LAST_RADIO = stringPreferencesKey("last_radio")
+        val TAB_ORDER = stringPreferencesKey("tab_order") // CSV
+        val AUTO_TAG = booleanPreferencesKey("auto_tag")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -288,8 +308,84 @@ class PreferencesRepository(private val context: Context) {
             loudnessFix = this[K.LOUDNESS_FIX] ?: false,
             splashEnabled = this[K.SPLASH] ?: true,
             notifButtonStyle = this[K.NOTIF_STYLE] ?: "5",
+            banglaNumerals = this[K.BANGLA_NUMS] ?: false,
+            lastfmEnabled = this[K.LASTFM_ON] ?: false,
+            lastfmUsername = this[K.LASTFM_USER] ?: "",
+            lastfmSessionKey = this[K.LASTFM_SK] ?: "",
+            lastfmScrobbleOverWifi = this[K.LASTFM_WIFI] ?: false,
+            radioStations = decodeStations(this[K.RADIO_STATIONS]),
+            lastRadioId = this[K.LAST_RADIO] ?: "",
+            tabOrder = (this[K.TAB_ORDER] ?: "").split(",").filter { it.isNotBlank() },
+            autoTagFromFilename = this[K.AUTO_TAG] ?: false,
         )
     }
+
+    private fun decodeStations(json: String?): List<RadioStation> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                RadioStation(
+                    id = o.getString("id"),
+                    name = o.getString("name"),
+                    streamUrl = o.getString("url"),
+                    country = o.optString("country", ""),
+                    tags = o.optString("tags", ""),
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeStations(list: List<RadioStation>): String {
+        val arr = JSONArray()
+        list.forEach { s ->
+            val o = JSONObject()
+            o.put("id", s.id)
+            o.put("name", s.name)
+            o.put("url", s.streamUrl)
+            o.put("country", s.country)
+            o.put("tags", s.tags)
+            arr.put(o)
+        }
+        return arr.toString()
+    }
+
+    // v3.2 setters
+    suspend fun setBanglaNumerals(v: Boolean) =
+        context.dataStore.edit { it[K.BANGLA_NUMS] = v }
+    suspend fun setLastFmEnabled(v: Boolean) =
+        context.dataStore.edit { it[K.LASTFM_ON] = v }
+    suspend fun setLastFmSession(username: String, sessionKey: String) =
+        context.dataStore.edit {
+            it[K.LASTFM_USER] = username
+            it[K.LASTFM_SK] = sessionKey
+            it[K.LASTFM_ON] = sessionKey.isNotEmpty()
+        }
+    suspend fun clearLastFmSession() = context.dataStore.edit {
+        it[K.LASTFM_USER] = ""
+        it[K.LASTFM_SK] = ""
+        it[K.LASTFM_ON] = false
+    }
+    suspend fun setLastFmWifiOnly(v: Boolean) =
+        context.dataStore.edit { it[K.LASTFM_WIFI] = v }
+    suspend fun saveRadioStation(station: RadioStation) = context.dataStore.edit { p ->
+        val list = decodeStations(p[K.RADIO_STATIONS]).toMutableList()
+        list.removeAll { it.id == station.id }
+        list += station
+        p[K.RADIO_STATIONS] = encodeStations(list)
+    }
+    suspend fun deleteRadioStation(id: String) = context.dataStore.edit { p ->
+        val list = decodeStations(p[K.RADIO_STATIONS]).toMutableList()
+        list.removeAll { it.id == id }
+        p[K.RADIO_STATIONS] = encodeStations(list)
+    }
+    suspend fun setLastRadio(id: String) = context.dataStore.edit { it[K.LAST_RADIO] = id }
+    suspend fun setTabOrder(order: List<String>) = context.dataStore.edit {
+        it[K.TAB_ORDER] = order.joinToString(",")
+    }
+    suspend fun setAutoTagFromFilename(v: Boolean) =
+        context.dataStore.edit { it[K.AUTO_TAG] = v }
 
     // v3.1 setters
     suspend fun setAudioOnly(v: Boolean) = context.dataStore.edit { it[K.AUDIO_ONLY] = v }
