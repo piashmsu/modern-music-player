@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import com.gsmtrick.musicplayer.ui.components.AnimatedAuroraBackground
 import com.gsmtrick.musicplayer.ui.components.EdgeLightingOverlay
+import com.gsmtrick.musicplayer.ui.components.GlassBackdrop
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -35,11 +36,16 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.gsmtrick.musicplayer.playback.MusicPlaybackService
 import com.gsmtrick.musicplayer.ui.screens.AboutScreen
+import com.gsmtrick.musicplayer.ui.screens.AppLockScreen
 import com.gsmtrick.musicplayer.ui.screens.EffectsScreen
 import com.gsmtrick.musicplayer.ui.screens.LibraryScreen
 import com.gsmtrick.musicplayer.ui.screens.NowPlayingSheet
 import com.gsmtrick.musicplayer.ui.screens.SettingsScreen
+import com.gsmtrick.musicplayer.ui.screens.StatsScreen
 import com.gsmtrick.musicplayer.ui.screens.YoutubeScreen
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.gsmtrick.musicplayer.ui.theme.ModernMusicTheme
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -78,6 +84,14 @@ fun AppRoot(viewModel: PlayerViewModel) {
         dynamicColor = prefs.dynamicColor,
         accent = prefs.accent,
     ) {
+        var unlocked by remember { mutableStateOf(false) }
+        if (prefs.appLockPin.isNotEmpty() && !unlocked) {
+            AppLockScreen(
+                expectedPin = prefs.appLockPin,
+                onUnlock = { unlocked = true },
+            )
+            return@ModernMusicTheme
+        }
         val nav = rememberNavController()
         val backStack by nav.currentBackStackEntryAsState()
         val current = backStack?.destination?.route ?: "library"
@@ -89,36 +103,39 @@ fun AppRoot(viewModel: PlayerViewModel) {
                         selected = current == "library",
                         onClick = { nav.navigate("library") { popUpTo("library") { inclusive = true } } },
                         icon = { Icon(Icons.Rounded.LibraryMusic, null) },
-                        label = { Text("Library") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.gsmtrick.musicplayer.R.string.nav_library)) },
                     )
                     NavigationBarItem(
                         selected = current == "youtube",
                         onClick = { nav.navigate("youtube") },
                         icon = { Icon(Icons.Rounded.Search, null) },
-                        label = { Text("YouTube") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.gsmtrick.musicplayer.R.string.nav_youtube)) },
                     )
                     NavigationBarItem(
                         selected = current == "effects",
                         onClick = { nav.navigate("effects") },
                         icon = { Icon(Icons.Rounded.Equalizer, null) },
-                        label = { Text("Effects") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.gsmtrick.musicplayer.R.string.nav_effects)) },
                     )
                     NavigationBarItem(
                         selected = current == "settings",
                         onClick = { nav.navigate("settings") },
                         icon = { Icon(Icons.Rounded.Settings, null) },
-                        label = { Text("Settings") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.gsmtrick.musicplayer.R.string.nav_settings)) },
                     )
                     NavigationBarItem(
                         selected = current == "about",
                         onClick = { nav.navigate("about") },
                         icon = { Icon(Icons.Rounded.Info, null) },
-                        label = { Text("About") },
+                        label = { Text(androidx.compose.ui.res.stringResource(com.gsmtrick.musicplayer.R.string.nav_about)) },
                     )
                 }
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
+                if (prefs.glassTheme) {
+                    GlassBackdrop(modifier = Modifier.fillMaxSize())
+                }
                 if (prefs.animatedWallpaper) {
                     AnimatedAuroraBackground(
                         modifier = Modifier.fillMaxSize(),
@@ -129,8 +146,11 @@ fun AppRoot(viewModel: PlayerViewModel) {
                     composable("library") { LibraryScreen(viewModel) }
                     composable("youtube") { YoutubeScreen(viewModel) }
                     composable("effects") { EffectsScreen(viewModel) }
-                    composable("settings") { SettingsScreen(viewModel) }
+                    composable("settings") {
+                        SettingsScreen(viewModel, onOpenStats = { nav.navigate("stats") })
+                    }
                     composable("about") { AboutScreen() }
+                    composable("stats") { StatsScreen(viewModel, onBack = { nav.popBackStack() }) }
                 }
                 if (state.currentSong != null) {
                     NowPlayingSheet(viewModel = viewModel)

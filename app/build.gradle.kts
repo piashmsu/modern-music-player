@@ -11,8 +11,8 @@ android {
         applicationId = "com.gsmtrick.musicplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 7
+        versionName = "3.1"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -64,6 +64,7 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")

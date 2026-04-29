@@ -18,6 +18,7 @@ data class YoutubeSearchResult(
     val uploader: String?,
     val durationSec: Long,
     val thumbnailUrl: String?,
+    val uploaderUrl: String? = null,
 )
 
 data class YoutubeStream(
@@ -61,6 +62,7 @@ object YoutubeRepository {
                         url = it.url,
                         title = it.name,
                         uploader = it.uploaderName,
+                        uploaderUrl = it.uploaderUrl,
                         durationSec = it.duration,
                         thumbnailUrl = it.thumbnails.firstOrNull()?.url,
                     )
@@ -113,6 +115,7 @@ object YoutubeRepository {
                         url = it.url,
                         title = it.name,
                         uploader = it.uploaderName,
+                        uploaderUrl = it.uploaderUrl,
                         durationSec = it.duration,
                         thumbnailUrl = it.thumbnails.firstOrNull()?.url,
                     )
@@ -136,6 +139,7 @@ object YoutubeRepository {
                         url = it.url,
                         title = it.name,
                         uploader = it.uploaderName,
+                        uploaderUrl = it.uploaderUrl,
                         durationSec = it.duration,
                         thumbnailUrl = it.thumbnails.firstOrNull()?.url,
                     )
@@ -146,4 +150,58 @@ object YoutubeRepository {
     private fun mimeFor(s: AudioStream): String {
         return s.format?.mimeType ?: "audio/mp4"
     }
+
+    /** Fetches the trending kiosk feed (default music kiosk if available). */
+    suspend fun trending(limit: Int = 50): List<YoutubeSearchResult> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+            val service = ServiceList.YouTube
+            val kioskList = service.kioskList
+            val kiosk = runCatching { kioskList.getDefaultKioskExtractor() }.getOrNull()
+                ?: return@withContext emptyList()
+            kiosk.fetchPage()
+            kiosk.initialPage.items
+                .asSequence()
+                .filterIsInstance<StreamInfoItem>()
+                .take(limit)
+                .map {
+                    YoutubeSearchResult(
+                        url = it.url,
+                        title = it.name,
+                        uploader = it.uploaderName,
+                        uploaderUrl = it.uploaderUrl,
+                        durationSec = it.duration,
+                        thumbnailUrl = it.thumbnails.firstOrNull()?.url,
+                    )
+                }
+                .toList()
+        }
+
+    /** Fetches uploads from a YouTube channel by channel URL. */
+    suspend fun channelUploads(channelUrl: String, limit: Int = 50): List<YoutubeSearchResult> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+            val info = org.schabi.newpipe.extractor.channel.ChannelInfo.getInfo(channelUrl)
+            // Try the first tab (usually "Videos")
+            val tab = info.tabs.firstOrNull() ?: return@withContext emptyList()
+            val tabInfo = org.schabi.newpipe.extractor.channel.tabs.ChannelTabInfo.getInfo(
+                ServiceList.YouTube,
+                tab,
+            )
+            tabInfo.relatedItems
+                .asSequence()
+                .filterIsInstance<StreamInfoItem>()
+                .take(limit)
+                .map {
+                    YoutubeSearchResult(
+                        url = it.url,
+                        title = it.name,
+                        uploader = it.uploaderName,
+                        uploaderUrl = it.uploaderUrl,
+                        durationSec = it.duration,
+                        thumbnailUrl = it.thumbnails.firstOrNull()?.url,
+                    )
+                }
+                .toList()
+        }
 }

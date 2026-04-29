@@ -303,12 +303,23 @@ private fun FullPlayer(
 
                 Spacer(Modifier.height(16.dp))
 
+                val layout = prefs.nowPlayingLayout
+                val artAspect = when (layout) {
+                    "minimal" -> 1.6f
+                    "cassette" -> 1.4f
+                    else -> 1f
+                }
+                val artShape = when (layout) {
+                    "cassette" -> RoundedCornerShape(8.dp)
+                    "cards" -> RoundedCornerShape(40.dp)
+                    else -> RoundedCornerShape(28.dp)
+                }
                 if (!lyricsOpen) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(28.dp))
+                            .aspectRatio(artAspect)
+                            .clip(artShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .pointerInput(song.id) {
                                 var totalDx = 0f
@@ -355,7 +366,7 @@ private fun FullPlayer(
 
                 Spacer(Modifier.height(20.dp))
 
-                if (prefs.visualizerEnabled) {
+                if (prefs.visualizerEnabled && layout != "minimal") {
                     AudioSpectrum(
                         audioSessionId = sessionId.takeIf { it != 0 },
                         color = MaterialTheme.colorScheme.primary,

@@ -151,6 +151,13 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
                 _state.value.currentSong?.let {
                     viewModelScope.launch { prefsRepo.recordPlay(it.id.toString()) }
                 }
+                // Sleep at end of song: pause when the previous song ended naturally.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    _prefs.value.sleepEndOfSong
+                ) {
+                    c.pause()
+                    viewModelScope.launch { prefsRepo.setSleepEndOfSong(false) }
+                }
                 // syncFromController (triggered via onEvents) loads lyrics
                 // after the state has been updated to the new song.
             }
@@ -243,6 +250,21 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
     fun togglePlay() {
         val c = controller ?: return
         if (c.isPlaying) c.pause() else c.play()
+    }
+
+    fun play() {
+        controller?.play()
+    }
+    fun pause() {
+        controller?.pause()
+    }
+
+    /** Replay the last 30 seconds of the current track. */
+    fun replayLast30() {
+        val c = controller ?: return
+        val pos = c.currentPosition
+        c.seekTo((pos - 30_000L).coerceAtLeast(0L))
+        c.play()
     }
 
     /**
@@ -384,6 +406,86 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
             .take(limit)
     }
 
+    /** Daily mix: deterministic seeded shuffle of library, refreshed each day. */
+    fun dailyMix(limit: Int = 25): List<Song> {
+        val daySeed = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val songs = visibleSongs()
+        if (songs.isEmpty()) return emptyList()
+        val rng = java.util.Random(daySeed.toLong())
+        return songs.shuffled(rng).take(limit)
+    }
+
+    /** "On repeat" — songs played 3+ times in last ~30 plays. */
+    fun onRepeatSongs(limit: Int = 25): List<Song> {
+        val counts = _prefs.value.playCounts
+        val byId = _library.value.songs.associateBy { it.id.toString() }
+        return counts.entries.filter { it.value >= 3 }
+            .sortedByDescending { it.value }
+            .mapNotNull { byId[it.key] }
+            .filter { !isHiddenOrTrashed(it) }
+            .take(limit)
+    }
+
+    /** Discovery: songs with 0 or 1 plays. */
+    fun discoverySongs(limit: Int = 25): List<Song> {
+        val counts = _prefs.value.playCounts
+        return visibleSongs()
+            .filter { (counts[it.id.toString()] ?: 0) <= 1 }
+            .shuffled()
+            .take(limit)
+    }
+
+    /** Mood: chill = bitrate-low + duration > 4min; upbeat = duration <= 3:30. Best-effort heuristic. */
+    fun moodSongs(mood: String, limit: Int = 25): List<Song> {
+        val songs = visibleSongs()
+        return when (mood) {
+            "chill" -> songs.filter { it.durationMs >= 240_000 }.take(limit)
+            "upbeat" -> songs.filter { it.durationMs in 60_000..210_000 }.take(limit)
+            "sad" -> songs.filter { it.durationMs >= 300_000 }.take(limit)
+            "happy" -> songs.filter { it.durationMs in 120_000..240_000 }.take(limit)
+            "romantic" -> songs.filter {
+                it.title.contains("love", true) || it.title.contains("heart", true) ||
+                    it.album.contains("romance", true)
+            }.take(limit).ifEmpty { songs.shuffled().take(limit) }
+            else -> songs.take(limit)
+        }
+    }
+
+    /** Tempo: slow = duration > 4:30, fast = duration < 3:00. */
+    fun tempoSongs(fast: Boolean, limit: Int = 25): List<Song> {
+        val songs = visibleSongs()
+        return if (fast) songs.filter { it.durationMs < 180_000 }.take(limit)
+        else songs.filter { it.durationMs >= 270_000 }.take(limit)
+    }
+
+    fun hiddenSongs(): List<Song> {
+        val ids = _prefs.value.hiddenSongs
+        return _library.value.songs.filter { it.id.toString() in ids }
+    }
+
+    fun trashedSongs(): List<Song> {
+        val ids = _prefs.value.trashedSongs
+        return _library.value.songs.filter { it.id.toString() in ids }
+    }
+
+    /** Visible = library minus hidden and trashed. */
+    fun visibleSongs(): List<Song> {
+        val hidden = _prefs.value.hiddenSongs
+        val trashed = _prefs.value.trashedSongs
+        return _library.value.songs.filter {
+            val id = it.id.toString()
+            id !in hidden && id !in trashed
+        }
+    }
+
+    private fun isHiddenOrTrashed(s: Song): Boolean {
+        val id = s.id.toString()
+        return id in _prefs.value.hiddenSongs || id in _prefs.value.trashedSongs
+    }
+
+    /** History timeline: last N plays grouped (most recent first). */
+    fun historyTimeline(limit: Int = 50): List<Song> = recentlyPlayedSongs(limit)
+
     fun createPlaylist(name: String, ids: List<Long> = emptyList()) {
         viewModelScope.launch { playlistRepo.create(name, ids) }
     }
@@ -482,6 +584,122 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
 
     fun setAutoRadio(v: Boolean) {
         viewModelScope.launch { prefsRepo.setAutoRadio(v) }
+    }
+
+    fun setAppLockPin(pin: String) {
+        viewModelScope.launch { prefsRepo.setAppLockPin(pin) }
+    }
+
+    fun setShakeToSkip(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setShakeToSkip(v) }
+    }
+
+    fun setSleepEndOfSong(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setSleepEndOfSong(v) }
+    }
+
+    fun setSpatialWide(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setSpatialWide(v) }
+    }
+
+    fun setPrefetch(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setPrefetch(v) }
+    }
+
+    fun setVoiceSearch(v: Boolean) {
+        viewModelScope.launch { prefsRepo.setVoiceSearch(v) }
+    }
+
+    // v3.1 setters
+    fun setAudioOnly(v: Boolean) = viewModelScope.launch { prefsRepo.setAudioOnly(v) }
+    fun setPreCache(v: Boolean) = viewModelScope.launch { prefsRepo.setPreCache(v) }
+    fun setAutoSkipSilence(v: Boolean) = viewModelScope.launch { prefsRepo.setAutoSkipSilence(v) }
+    fun setCaptionsToLyrics(v: Boolean) = viewModelScope.launch { prefsRepo.setCaptionsToLyrics(v) }
+    fun setYtMusicBackend(v: Boolean) = viewModelScope.launch { prefsRepo.setYtMusicBackend(v) }
+    fun setNpAnimations(v: Boolean) = viewModelScope.launch { prefsRepo.setNpAnimations(v) }
+    fun setSwipeGestures(v: Boolean) = viewModelScope.launch { prefsRepo.setSwipeGestures(v) }
+    fun setDensity(v: String) = viewModelScope.launch { prefsRepo.setDensity(v) }
+    fun setIconVariant(v: String) = viewModelScope.launch { prefsRepo.setIconVariant(v) }
+    fun setStickyLyricsNotif(v: Boolean) = viewModelScope.launch { prefsRepo.setStickyLyricsNotif(v) }
+    fun setDailyStatsNotif(v: Boolean) = viewModelScope.launch { prefsRepo.setDailyStatsNotif(v) }
+    fun setWorkoutMode(v: Boolean) = viewModelScope.launch { prefsRepo.setWorkoutMode(v) }
+    fun setSleepMusicMode(v: Boolean) = viewModelScope.launch { prefsRepo.setSleepMusicMode(v) }
+    fun setDrivingMode(v: Boolean) = viewModelScope.launch { prefsRepo.setDrivingMode(v) }
+    fun setAutoEqByEnvironment(v: Boolean) = viewModelScope.launch { prefsRepo.setAutoEqByEnvironment(v) }
+    fun setAutoResumeOnHeadphone(v: Boolean) = viewModelScope.launch { prefsRepo.setAutoResumeOnHeadphone(v) }
+    fun setCurrentProfile(v: String) = viewModelScope.launch { prefsRepo.setCurrentProfile(v) }
+    fun setProfiles(v: List<String>) = viewModelScope.launch { prefsRepo.setProfiles(v) }
+    fun toggleHidden(songId: String) = viewModelScope.launch { prefsRepo.toggleHidden(songId) }
+    fun trashSong(songId: String) = viewModelScope.launch { prefsRepo.trashSong(songId) }
+    fun restoreSong(songId: String) = viewModelScope.launch { prefsRepo.restoreSong(songId) }
+    fun emptyTrash() = viewModelScope.launch { prefsRepo.emptyTrash() }
+    fun setHeadphonePreset(v: String) = viewModelScope.launch { prefsRepo.setHeadphonePreset(v) }
+    fun setBassEnhancerPro(v: Boolean) = viewModelScope.launch { prefsRepo.setBassEnhancerPro(v) }
+    fun setCinemaMode(v: Boolean) = viewModelScope.launch { prefsRepo.setCinemaMode(v) }
+    fun setLoudnessFix(v: Boolean) = viewModelScope.launch { prefsRepo.setLoudnessFix(v) }
+    fun setSplashEnabled(v: Boolean) = viewModelScope.launch { prefsRepo.setSplashEnabled(v) }
+    fun setNotifButtonStyle(v: String) = viewModelScope.launch { prefsRepo.setNotifButtonStyle(v) }
+    fun setBackupPassword(plain: String) = viewModelScope.launch {
+        val hash = if (plain.isEmpty()) "" else java.security.MessageDigest.getInstance("SHA-256")
+            .digest(plain.toByteArray()).joinToString("") { "%02x".format(it) }
+        prefsRepo.setBackupPasswordHash(hash)
+    }
+
+    suspend fun exportBackup(uri: android.net.Uri): Boolean {
+        val repo = com.gsmtrick.musicplayer.data.BackupRepository(
+            getApplication(), prefsRepo, playlistRepo,
+        )
+        return repo.export(uri)
+    }
+
+    suspend fun importBackup(uri: android.net.Uri): Boolean {
+        val repo = com.gsmtrick.musicplayer.data.BackupRepository(
+            getApplication(), prefsRepo, playlistRepo,
+        )
+        val ok = repo.import(uri)
+        if (ok) {
+            // Reload playlists
+            playlistRepo.load()
+        }
+        return ok
+    }
+
+    /** Total listening time approximation: sum of (playCount × duration). */
+    fun totalListeningMs(): Long {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        // Fallback: for unknown ids, approximate 3 minutes
+        return counts.entries.sumOf { (id, n) ->
+            (songs[id]?.durationMs ?: 180_000L) * n
+        }
+    }
+
+    /** Top artists by total play count across their songs. */
+    fun topArtists(limit: Int = 10): List<Pair<String, Int>> {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        val byArtist = HashMap<String, Int>()
+        counts.forEach { (id, n) ->
+            val artist = songs[id]?.artist ?: return@forEach
+            byArtist[artist] = (byArtist[artist] ?: 0) + n
+        }
+        return byArtist.entries
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { it.key to it.value }
+    }
+
+    /** Top songs by play count. */
+    fun topSongs(limit: Int = 10): List<Pair<Song, Int>> {
+        val counts = _prefs.value.playCounts
+        val songs = _library.value.songs.associateBy { it.id.toString() }
+        return counts.entries
+            .mapNotNull { (id, n) ->
+                val s = songs[id] ?: return@mapNotNull null
+                s to n
+            }
+            .sortedByDescending { it.second }
+            .take(limit)
     }
 
     fun setFolderLockPin(pin: String) {

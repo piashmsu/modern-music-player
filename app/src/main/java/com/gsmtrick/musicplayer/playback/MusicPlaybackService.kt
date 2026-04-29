@@ -122,8 +122,12 @@ class MusicPlaybackService : MediaSessionService() {
 
         scope.launch {
             prefs.prefs.collectLatest { p ->
-                effects.apply(p.effects)
-                applyChannelMix(p.effects, karaoke = p.karaokeMode)
+                // Auto-amplify when v3.1 audio modes are enabled — gentle band/effect boosts
+                // applied on top of the user's manual EQ state.
+                val amplifiedEffects = applyV31AudioModes(p)
+                effects.apply(amplifiedEffects)
+                val wide = p.spatialWide || p.cinemaMode
+                applyChannelMix(amplifiedEffects, karaoke = p.karaokeMode, spatialWide = wide)
                 globalSpeed = p.playbackSpeed.coerceIn(0.5f, 2f)
                 pitchSemitones = p.effects.pitchSemitones
                 perSongSpeed = p.perSongSpeed
@@ -158,8 +162,53 @@ class MusicPlaybackService : MediaSessionService() {
         )
     }
 
+    /**
+     * Returns a copy of effects boosted by v3.1 modes:
+     *  - cinemaMode: +reverb (large hall) and +virtualizer
+     *  - bassEnhancerPro: +bass boost and lift two lowest EQ bands
+     *  - loudnessFix: +loudness enhancer
+     *  - autoEqByEnvironment: pick lows-vs-highs by speaker/headphone state
+     *  - headphonePreset: shape EQ for the chosen earpiece flavour
+     *  - workout/sleep music modes: subtle EQ tilt
+     */
+    private fun applyV31AudioModes(p: com.gsmtrick.musicplayer.data.AppPrefs): com.gsmtrick.musicplayer.data.EffectsState {
+        var e = p.effects
+        val bands = e.bands.toMutableList()
+        if (p.cinemaMode) {
+            e = e.copy(
+                reverbPreset = e.reverbPreset.coerceAtLeast(5), // large hall
+                virtualizer = e.virtualizer.coerceAtLeast(60),
+            )
+        }
+        if (p.bassEnhancerPro) {
+            e = e.copy(bassBoost = e.bassBoost.coerceAtLeast(70))
+            for (i in 0..1) if (i < bands.size) {
+                bands[i] = (bands[i] + 600).coerceIn(-1500, 1500).toShort()
+            }
+        }
+        if (p.loudnessFix) {
+            e = e.copy(loudness = e.loudness.coerceAtLeast(800))
+        }
+        // headphonePreset shapes
+        when (p.headphonePreset) {
+            "sony_wh" -> bands.applyShape(intArrayOf(400, 200, 0, -100, 0, 100, 200, 300, 400, 500))
+            "airpods" -> bands.applyShape(intArrayOf(200, 100, 0, 0, -100, 0, 100, 200, 300, 400))
+            "boat" -> bands.applyShape(intArrayOf(700, 500, 200, 0, -200, -100, 100, 200, 400, 600))
+            "realme" -> bands.applyShape(intArrayOf(500, 300, 100, 0, 0, 100, 200, 300, 400, 500))
+            "beats" -> bands.applyShape(intArrayOf(800, 600, 300, 0, -100, 0, 100, 200, 200, 100))
+            "flat" -> { /* no shape */ }
+        }
+        if (p.workoutMode) bands.applyShape(intArrayOf(600, 400, 200, 0, 0, 100, 200, 300, 400, 500))
+        if (p.sleepMusicMode) bands.applyShape(intArrayOf(0, -100, -200, -300, -300, -300, -400, -500, -600, -700))
+        return e.copy(bands = bands.map { it.toShort() })
+    }
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    private fun applyChannelMix(state: EffectsState, karaoke: Boolean = false) {
+    private fun applyChannelMix(
+        state: EffectsState,
+        karaoke: Boolean = false,
+        spatialWide: Boolean = false,
+    ) {
         val balance = state.balance.coerceIn(-1f, 1f)
         val leftGain: Float
         val rightGain: Float
@@ -191,6 +240,12 @@ class MusicPlaybackService : MediaSessionService() {
             state.monoMode == "reverse" -> floatArrayOf(
                 0f, 1f,
                 1f, 0f,
+            )
+            // Spatial wide: emphasises stereo difference (L = 1.3·L − 0.3·R,
+            // R = 1.3·R − 0.3·L), which broadens the stereo image.
+            spatialWide -> floatArrayOf(
+                1.3f * leftGain, -0.3f * leftGain,
+                -0.3f * rightGain, 1.3f * rightGain,
             )
             else -> floatArrayOf(
                 leftGain, 0f,
@@ -261,5 +316,12 @@ class MusicPlaybackService : MediaSessionService() {
             mediaSession = null
         }
         super.onDestroy()
+    }
+}
+
+private fun MutableList<Short>.applyShape(shape: IntArray) {
+    val n = minOf(size, shape.size)
+    for (i in 0 until n) {
+        this[i] = (this[i] + shape[i]).coerceIn(-1500, 1500).toShort()
     }
 }

@@ -1,7 +1,9 @@
 package com.gsmtrick.musicplayer.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,15 +27,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -69,16 +75,20 @@ import com.gsmtrick.musicplayer.data.Song
 import com.gsmtrick.musicplayer.ui.PlayerViewModel
 import java.util.concurrent.TimeUnit
 
-private enum class LibTab(val title: String, val icon: ImageVector) {
-    Songs("Songs", Icons.Rounded.MusicNote),
-    Albums("Albums", Icons.Rounded.Album),
-    Artists("Artists", Icons.Rounded.Person),
-    Playlists("Playlists", Icons.Rounded.PlaylistPlay),
-    Favorites("Favorites", Icons.Rounded.Favorite),
-    Recent("Recent", Icons.Rounded.History),
-    MostPlayed("Most Played", Icons.Rounded.Whatshot),
-    Folders("Folders", Icons.Rounded.Folder),
-    Genres("Genres", Icons.Rounded.QueueMusic),
+private enum class LibTab(val titleRes: Int, val icon: ImageVector) {
+    ForYou(com.gsmtrick.musicplayer.R.string.tab_for_you, Icons.Rounded.AutoAwesome),
+    Songs(com.gsmtrick.musicplayer.R.string.tab_songs, Icons.Rounded.MusicNote),
+    Albums(com.gsmtrick.musicplayer.R.string.tab_albums, Icons.Rounded.Album),
+    Artists(com.gsmtrick.musicplayer.R.string.tab_artists, Icons.Rounded.Person),
+    Playlists(com.gsmtrick.musicplayer.R.string.tab_playlists, Icons.Rounded.PlaylistPlay),
+    Favorites(com.gsmtrick.musicplayer.R.string.tab_favorites, Icons.Rounded.Favorite),
+    Recent(com.gsmtrick.musicplayer.R.string.tab_recent, Icons.Rounded.History),
+    MostPlayed(com.gsmtrick.musicplayer.R.string.tab_most_played, Icons.Rounded.Whatshot),
+    Folders(com.gsmtrick.musicplayer.R.string.tab_folders, Icons.Rounded.Folder),
+    Genres(com.gsmtrick.musicplayer.R.string.tab_genres, Icons.Rounded.QueueMusic),
+    Decades(com.gsmtrick.musicplayer.R.string.tab_decades, Icons.Rounded.History),
+    Hidden(com.gsmtrick.musicplayer.R.string.tab_hidden, Icons.Rounded.VisibilityOff),
+    Trash(com.gsmtrick.musicplayer.R.string.tab_trash, Icons.Rounded.Delete),
 }
 
 @Composable
@@ -95,6 +105,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
     var openArtist by remember { mutableStateOf<Artist?>(null) }
     var openFolder by remember { mutableStateOf<Folder?>(null) }
     var openGenre by remember { mutableStateOf<Genre?>(null) }
+    var openDecade by remember { mutableStateOf<Int?>(null) }
     var openPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
 
@@ -143,7 +154,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 Tab(
                     selected = tab == t,
                     onClick = { tab = t },
-                    text = { Text(t.title) },
+                    text = { Text(androidx.compose.ui.res.stringResource(t.titleRes)) },
                     icon = { Icon(t.icon, null, modifier = Modifier.size(20.dp)) },
                 )
             }
@@ -153,8 +164,25 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
 
         val q = query.trim()
         when (tab) {
+            LibTab.ForYou -> ForYouContent(
+                viewModel = viewModel,
+                state = state,
+                favorites = prefs.favorites,
+            )
             LibTab.Songs -> SongList(
-                songs = filterSongs(library.songs, q),
+                songs = filterSongs(viewModel.visibleSongs(), q),
+                state = state,
+                viewModel = viewModel,
+                favorites = prefs.favorites,
+            )
+            LibTab.Hidden -> SongList(
+                songs = filterSongs(viewModel.hiddenSongs(), q),
+                state = state,
+                viewModel = viewModel,
+                favorites = prefs.favorites,
+            )
+            LibTab.Trash -> SongList(
+                songs = filterSongs(viewModel.trashedSongs(), q),
                 state = state,
                 viewModel = viewModel,
                 favorites = prefs.favorites,
@@ -192,11 +220,19 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
             )
             LibTab.Folders -> FolderList(
                 folders = library.folders.filter { q.isBlank() || it.name.contains(q, true) },
+                lockedFolders = prefs.lockedFolders,
+                pin = prefs.folderLockPin,
                 onClick = { openFolder = it },
+                onToggleLock = { path -> viewModel.toggleLockedFolder(path) },
+                onSetPin = { newPin -> viewModel.setFolderLockPin(newPin) },
             )
             LibTab.Genres -> GenreList(
                 genres = library.genres.filter { q.isBlank() || it.name.contains(q, true) },
                 onClick = { openGenre = it },
+            )
+            LibTab.Decades -> DecadeList(
+                songs = library.songs,
+                onClick = { openDecade = it },
             )
         }
     }
@@ -208,6 +244,10 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
             s.filePath?.let { java.io.File(it).parent == openFolder!!.path } == true
         }
         openGenre != null -> library.songs // The genre detail uses lazy lookup; show all & filter by genre id
+        openDecade != null -> library.songs.filter { s ->
+            val d = (s.year / 10) * 10
+            d == openDecade
+        }
         openPlaylist != null -> openPlaylist!!.songIds.mapNotNull { id ->
             library.songs.firstOrNull { it.id == id }
         }
@@ -220,6 +260,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 ?: openArtist?.name
                 ?: openFolder?.name
                 ?: openGenre?.name
+                ?: openDecade?.let { "${it}s" }
                 ?: openPlaylist?.name
                 ?: "",
             songs = openSongs,
@@ -231,6 +272,7 @@ fun LibraryScreen(viewModel: PlayerViewModel) {
                 openArtist = null
                 openFolder = null
                 openGenre = null
+                openDecade = null
                 openPlaylist = null
             },
             onDeletePlaylist = openPlaylist?.let { p -> { viewModel.deletePlaylist(p.id) } },
@@ -273,6 +315,66 @@ private fun filterSongs(songs: List<Song>, q: String): List<Song> {
 }
 
 @Composable
+private fun ForYouContent(
+    viewModel: PlayerViewModel,
+    state: com.gsmtrick.musicplayer.ui.PlaybackUiState,
+    favorites: Set<String>,
+) {
+    val sections = remember(viewModel.library.value, viewModel.prefs.value) {
+        listOf(
+            "Daily Mix" to viewModel.dailyMix(),
+            "On Repeat" to viewModel.onRepeatSongs(),
+            "Discovery" to viewModel.discoverySongs(),
+            "Mood: Chill" to viewModel.moodSongs("chill"),
+            "Mood: Upbeat" to viewModel.moodSongs("upbeat"),
+            "Tempo: Fast" to viewModel.tempoSongs(true),
+            "Tempo: Slow" to viewModel.tempoSongs(false),
+            "Recently played" to viewModel.recentlyPlayedSongs(),
+        ).filter { it.second.isNotEmpty() }
+    }
+    if (sections.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "Play a few songs first to see suggestions.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp)) {
+        sections.forEach { (title, songs) ->
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        if (songs.isNotEmpty()) viewModel.playSong(songs.first(), songs)
+                    }) { Text("Play") }
+                }
+            }
+            items(songs.take(8), key = { "$title:${it.id}" }) { song ->
+                SongRow(
+                    song = song,
+                    isCurrent = state.currentSong?.id == song.id,
+                    isFavorite = song.id.toString() in favorites,
+                    onClick = { viewModel.playSong(song, songs) },
+                    onToggleFavorite = { viewModel.toggleFavorite(song.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SongList(
     songs: List<Song>,
     state: com.gsmtrick.musicplayer.ui.PlaybackUiState,
@@ -289,6 +391,7 @@ private fun SongList(
         }
         return
     }
+    var actionsFor by remember { mutableStateOf<Song?>(null) }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         items(songs, key = { it.id }) { song ->
             SongRow(
@@ -297,8 +400,12 @@ private fun SongList(
                 isFavorite = song.id.toString() in favorites,
                 onClick = { viewModel.playSong(song, songs) },
                 onToggleFavorite = { viewModel.toggleFavorite(song.id) },
+                onLongClick = { actionsFor = song },
             )
         }
+    }
+    actionsFor?.let { song ->
+        SongActionsDialog(song = song, onDismiss = { actionsFor = null })
     }
 }
 
@@ -388,23 +495,46 @@ private fun ArtistList(artists: List<Artist>, onClick: (Artist) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderList(folders: List<Folder>, onClick: (Folder) -> Unit) {
+private fun FolderList(
+    folders: List<Folder>,
+    lockedFolders: Set<String>,
+    pin: String,
+    onClick: (Folder) -> Unit,
+    onToggleLock: (String) -> Unit,
+    onSetPin: (String) -> Unit,
+) {
+    var pendingFolder by remember { mutableStateOf<Folder?>(null) }
+    var menuFor by remember { mutableStateOf<Folder?>(null) }
+    var setPinOpen by remember { mutableStateOf(false) }
+
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         items(folders, key = { it.path }) { f ->
+            val locked = f.path in lockedFolders
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onClick(f) }
+                    .combinedClickable(
+                        onClick = {
+                            if (locked && pin.isNotEmpty()) pendingFolder = f else onClick(f)
+                        },
+                        onLongClick = { menuFor = f },
+                    )
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Folder, null)
+                Icon(
+                    if (locked) Icons.Rounded.Lock else Icons.Rounded.Folder,
+                    null,
+                    tint = if (locked) MaterialTheme.colorScheme.primary
+                        else androidx.compose.ui.graphics.Color.Unspecified,
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.name, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        f.path,
+                        if (locked) "Locked" else f.path,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -419,6 +549,131 @@ private fun FolderList(folders: List<Folder>, onClick: (Folder) -> Unit) {
             }
         }
     }
+
+    menuFor?.let { f ->
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            title = { Text(f.name) },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        if (pin.isEmpty()) setPinOpen = true
+                        else { onToggleLock(f.path); menuFor = null }
+                    }) {
+                        Text(if (f.path in lockedFolders) "Unlock folder" else "Lock folder")
+                    }
+                    TextButton(onClick = { setPinOpen = true; menuFor = null }) {
+                        Text(if (pin.isEmpty()) "Set PIN" else "Change PIN")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { menuFor = null }) { Text("Close") }
+            },
+        )
+    }
+
+    pendingFolder?.let { f ->
+        PinDialog(
+            title = "Enter PIN to open ${f.name}",
+            onDismiss = { pendingFolder = null },
+            onSubmit = { entered ->
+                if (entered == pin) {
+                    onClick(f)
+                    pendingFolder = null
+                }
+            },
+        )
+    }
+
+    if (setPinOpen) {
+        PinDialog(
+            title = if (pin.isEmpty()) "Set 4-digit PIN" else "Change PIN",
+            onDismiss = { setPinOpen = false },
+            onSubmit = { entered ->
+                if (entered.length in 4..8) {
+                    onSetPin(entered)
+                    setPinOpen = false
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun DecadeList(songs: List<Song>, onClick: (Int) -> Unit) {
+    val decades = remember(songs) {
+        songs.asSequence()
+            .filter { it.year > 0 }
+            .groupBy { (it.year / 10) * 10 }
+            .map { (decade, list) -> decade to list.size }
+            .sortedByDescending { it.first }
+    }
+    if (decades.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "No year metadata found in your songs.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(32.dp),
+            )
+        }
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        items(decades, key = { it.first }) { (decade, count) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClick(decade) }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.History, null)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "${decade}s",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$count",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = value,
+                onValueChange = { value = it.filter { c -> c.isDigit() }.take(8) },
+                label = { Text("PIN") },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(value) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable
@@ -550,17 +805,19 @@ private fun SongDetailDialog(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun SongRow(
     song: Song,
     isCurrent: Boolean,
     isFavorite: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onLongClick: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

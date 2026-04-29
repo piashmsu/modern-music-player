@@ -2,6 +2,7 @@ package com.gsmtrick.musicplayer.ui.screens
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
@@ -31,6 +32,12 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Whatshot
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Mic
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,11 +86,51 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
     var error by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<YoutubeSearchResult>>(emptyList()) }
     var resolvingUrl by remember { mutableStateOf<String?>(null) }
+    var modeLabel by remember { mutableStateOf("") }
+
+    fun runTrending() {
+        loading = true
+        error = null
+        modeLabel = "Trending"
+        scope.launch {
+            try {
+                results = YoutubeRepository.trending()
+                if (results.isEmpty()) {
+                    error = "No trending feed available"
+                }
+            } catch (t: Throwable) {
+                error = t.message ?: "Trending failed"
+                results = emptyList()
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    fun runChannel(url: String, name: String) {
+        loading = true
+        error = null
+        modeLabel = "Channel: $name"
+        scope.launch {
+            try {
+                results = YoutubeRepository.channelUploads(url)
+                if (results.isEmpty()) {
+                    error = "No uploads found"
+                }
+            } catch (t: Throwable) {
+                error = t.message ?: "Channel browse failed"
+                results = emptyList()
+            } finally {
+                loading = false
+            }
+        }
+    }
 
     fun runSearch(q: String) {
         if (q.isBlank()) return
         loading = true
         error = null
+        modeLabel = ""
         scope.launch {
             try {
                 val isPlaylistUrl = q.contains("list=") &&
@@ -156,15 +203,71 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
             modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
         )
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TextButton(onClick = { runTrending() }) {
+                Icon(Icons.Rounded.Whatshot, null)
+                Spacer(Modifier.width(4.dp))
+                Text("Trending")
+            }
+            if (modeLabel.isNotEmpty()) {
+                Text(
+                    modeLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                )
+            }
+        }
+
+        val voiceLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            val matches = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val text = matches?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                query = text
+                focus.clearFocus()
+                runSearch(text)
+            }
+        }
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Song, artist or playlist URL...") },
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
             trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { query = "" }) {
-                        Icon(Icons.Rounded.Close, null)
+                Row {
+                    if (prefs.voiceSearchEnabled) {
+                        IconButton(onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(
+                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                                )
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Search YouTube")
+                            }
+                            runCatching { voiceLauncher.launch(intent) }
+                                .onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        "Voice search not available on this device",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                        }) {
+                            Icon(Icons.Rounded.Mic, "Voice search")
+                        }
+                    }
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Rounded.Close, null)
+                        }
                     }
                 }
             },
@@ -253,6 +356,7 @@ fun YoutubeScreen(viewModel: PlayerViewModel) {
                                 resolving = resolvingUrl == item.url,
                                 onPlay = { playResult(item) },
                                 onDownload = { downloadResult(item) },
+                                onChannel = { url, name -> runChannel(url, name) },
                             )
                         }
                     }
@@ -268,6 +372,7 @@ private fun YoutubeResultRow(
     resolving: Boolean,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
+    onChannel: (String, String) -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -319,12 +424,17 @@ private fun YoutubeResultRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val upUrl = item.uploaderUrl
+                val upName = item.uploader
                 Text(
                     item.uploader ?: "—",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = if (upUrl != null && upName != null) {
+                        Modifier.clickable { onChannel(upUrl, upName) }
+                    } else Modifier,
                 )
             }
             if (resolving) {
