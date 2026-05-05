@@ -376,12 +376,89 @@ fun SettingsScreen(
             }
         }
         item {
-            SettingCard("Edge lighting", "Pulse screen edges to the beat") {
+            SettingCard("v3.3 — Edge lighting", "Beat-reactive pulsing light around the screen") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enable", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = prefs.edgeLighting,
+                            onCheckedChange = { viewModel.setEdgeLighting(it) },
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("React to bass beats", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = prefs.edgeLightingBeatReactive,
+                            onCheckedChange = { viewModel.setEdgeLightingBeatReactive(it) },
+                            enabled = prefs.edgeLighting,
+                        )
+                    }
+                    Text("Color")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            "rainbow" to "Rainbow",
+                            "album" to "Album",
+                            "single" to "Single",
+                        ).forEach { (k, v) ->
+                            FilterChip(
+                                selected = prefs.edgeLightingColorMode == k,
+                                onClick = { viewModel.setEdgeLightingColorMode(k) },
+                                label = { Text(v) },
+                                enabled = prefs.edgeLighting,
+                            )
+                        }
+                    }
+                    Text("Thickness: ${prefs.edgeLightingThicknessDp} dp")
+                    Slider(
+                        value = prefs.edgeLightingThicknessDp.toFloat(),
+                        onValueChange = { viewModel.setEdgeLightingThickness(it.toInt()) },
+                        valueRange = 4f..32f,
+                        enabled = prefs.edgeLighting,
+                    )
+                    Text("Intensity: ${(prefs.edgeLightingIntensity * 100).toInt()}%")
+                    Slider(
+                        value = prefs.edgeLightingIntensity,
+                        onValueChange = { viewModel.setEdgeLightingIntensity(it) },
+                        valueRange = 0f..1f,
+                        enabled = prefs.edgeLighting,
+                    )
+                }
+            }
+        }
+        item {
+            EdgeLightingSystemWideCard(prefs = prefs, viewModel = viewModel)
+        }
+        item {
+            SettingCard(
+                "v3.3 — Flash on beat",
+                "Strobe phone torch with bass kicks (party mode)",
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enable", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = prefs.flashOnBeat,
+                            onCheckedChange = { viewModel.setFlashOnBeat(it) },
+                        )
+                    }
+                    Text(
+                        "May trigger seizures in people with photosensitive epilepsy.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "v3.3 — Vibrate on beat",
+                "Short haptic pulse on every detected bass kick",
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Enable", modifier = Modifier.weight(1f))
                     Switch(
-                        checked = prefs.edgeLighting,
-                        onCheckedChange = { viewModel.setEdgeLighting(it) },
+                        checked = prefs.vibrateOnBeat,
+                        onCheckedChange = { viewModel.setVibrateOnBeat(it) },
                     )
                 }
             }
@@ -738,12 +815,80 @@ fun SettingsScreen(
             }
         }
         item {
+            SettingCard("v3.3 — Sub-bass plus", "Software low-shelf below 250 Hz on top of the system bass boost") {
+                Column {
+                    Text("Strength: ${(prefs.effects.subBassBoost / 10f).toInt()}%")
+                    Slider(
+                        value = prefs.effects.subBassBoost.toFloat(),
+                        valueRange = 0f..1000f,
+                        onValueChange = { viewModel.setSubBassBoost(it.toInt()) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("v3.3 — Bass punch", "Transient kick boost that stacks on the loudness gain") {
+                Column {
+                    Text("Strength: ${(prefs.effects.bassPunch / 10f).toInt()}%")
+                    Slider(
+                        value = prefs.effects.bassPunch.toFloat(),
+                        valueRange = 0f..1000f,
+                        onValueChange = { viewModel.setBassPunch(it.toInt()) },
+                    )
+                }
+            }
+        }
+        item {
             Text(
-                "Modern Music Player • v3.2",
+                "Modern Music Player • v3.3",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun EdgeLightingSystemWideCard(
+    prefs: com.gsmtrick.musicplayer.data.AppPrefs,
+    viewModel: PlayerViewModel,
+) {
+    val context = LocalContext.current
+    SettingCard(
+        "v3.3 — Edge light on every screen",
+        "Pulse on the home screen, lock screen and other apps (requires display-over-other-apps permission)",
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Enable", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = prefs.edgeLightingSystemWide,
+                    enabled = prefs.edgeLighting,
+                    onCheckedChange = { wanted ->
+                        if (wanted &&
+                            !com.gsmtrick.musicplayer.effects.EdgeLightingService.canDraw(context)
+                        ) {
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:${context.packageName}"),
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            runCatching { context.startActivity(intent) }
+                        } else {
+                            viewModel.setEdgeLightingSystemWide(wanted)
+                        }
+                    },
+                )
+            }
+            if (prefs.edgeLightingSystemWide &&
+                !com.gsmtrick.musicplayer.effects.EdgeLightingService.canDraw(context)
+            ) {
+                Text(
+                    "Display-over-other-apps permission is required.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }

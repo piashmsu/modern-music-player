@@ -26,6 +26,13 @@ class AudioEffectsController {
     private var loudness: LoudnessEnhancer? = null
     private var reverb: PresetReverb? = null
     private var vocalEq: Equalizer? = null
+    // Dedicated Equalizer instance (priority -1 stacks below the user EQ)
+    // used to apply the v3.3 Sub-Bass low-shelf without interfering with
+    // the user's main 10-band EQ.
+    private var subBassEq: Equalizer? = null
+    // Dedicated LoudnessEnhancer used to deliver the v3.3 Bass Punch
+    // transient kick boost on top of the user's regular loudness gain.
+    private var punchLoudness: LoudnessEnhancer? = null
 
     val numberOfBands: Int
         get() = EQ_BANDS
@@ -68,6 +75,16 @@ class AudioEffectsController {
         runCatching {
             vocalEq = Equalizer(1, audioSessionId).apply { enabled = false }
         }.onFailure { Log.w(TAG, "Vocal EQ init failed", it) }
+        runCatching {
+            // Lower priority so the user EQ wins when both are enabled.
+            subBassEq = Equalizer(-1, audioSessionId).apply { enabled = false }
+        }.onFailure { Log.w(TAG, "Sub-bass EQ init failed", it) }
+        runCatching {
+            punchLoudness = LoudnessEnhancer(audioSessionId).apply {
+                enabled = false
+                setTargetGain(0)
+            }
+        }.onFailure { Log.w(TAG, "Punch LoudnessEnhancer init failed", it) }
     }
 
     fun apply(state: EffectsState) {
@@ -113,6 +130,48 @@ class AudioEffectsController {
             }.onFailure { Log.w(TAG, "Reverb apply failed", it) }
         }
         applyVocalBoost(state.vocalBoost)
+        applySubBass(state.subBassBoost)
+        applyBassPunch(state.bassPunch)
+    }
+
+    private fun applySubBass(strength: Int) {
+        val eq = subBassEq ?: return
+        runCatching {
+            val s = strength.coerceIn(0, 1000)
+            if (s == 0) {
+                eq.enabled = false
+                return@runCatching
+            }
+            val range = eq.bandLevelRange
+            val maxGain = range[1].toInt()
+            val n = eq.numberOfBands.toInt()
+            // Lift bands whose center frequency is below ~250 Hz — those
+            // carry sub-bass and low-bass content. Strength scales linearly
+            // up to ~70% of the equalizer's max gain so we never clip out.
+            val gain = (maxGain * 0.7 * (s / 1000.0)).toInt().toShort()
+            for (i in 0 until n) {
+                val freqMicroHz = eq.getCenterFreq(i.toShort())
+                val target = if (freqMicroHz in 0..250_000) gain else 0
+                eq.setBandLevel(i.toShort(), target.toShort())
+            }
+            eq.enabled = true
+        }.onFailure { Log.w(TAG, "Sub-bass apply failed", it) }
+    }
+
+    private fun applyBassPunch(strength: Int) {
+        val le = punchLoudness ?: return
+        runCatching {
+            val s = strength.coerceIn(0, 1000)
+            if (s == 0) {
+                le.enabled = false
+                le.setTargetGain(0)
+                return@runCatching
+            }
+            // Up to ~10dB extra gain at strength=1000.
+            val targetMillibels = (s * 1.0f).toInt()
+            le.setTargetGain(targetMillibels)
+            le.enabled = true
+        }.onFailure { Log.w(TAG, "Bass Punch apply failed", it) }
     }
 
     private fun applyVocalBoost(strength: Int) {
@@ -166,12 +225,16 @@ class AudioEffectsController {
         runCatching { loudness?.release() }
         runCatching { reverb?.release() }
         runCatching { vocalEq?.release() }
+        runCatching { subBassEq?.release() }
+        runCatching { punchLoudness?.release() }
         equalizer = null
         bassBoost = null
         virtualizer = null
         loudness = null
         reverb = null
         vocalEq = null
+        subBassEq = null
+        punchLoudness = null
         sessionId = 0
     }
 
