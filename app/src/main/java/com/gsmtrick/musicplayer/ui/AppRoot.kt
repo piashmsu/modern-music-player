@@ -165,6 +165,10 @@ fun AppRoot(viewModel: PlayerViewModel) {
                     EdgeLightingOverlay(
                         modifier = Modifier.fillMaxSize(),
                         active = true,
+                        beatReactive = prefs.edgeLightingBeatReactive,
+                        thicknessDp = prefs.edgeLightingThicknessDp,
+                        intensity = prefs.edgeLightingIntensity,
+                        colorMode = prefs.edgeLightingColorMode,
                     )
                 }
             }

@@ -96,9 +96,6 @@
     <string name="stats_top_artists">টপ শিল্পী</string>
     <string name="stats_top_songs">টপ গান</string>
     <!-- v3.2 -->
-    <string name="settings_lastfm">Last.fm স্ক্রবলিং</string>
-    <string name="settings_lastfm_login">Last.fm-এ লগইন</string>
-    <string name="settings_lastfm_logout">লগআউট</string>
     <string name="settings_radio">ইন্টারনেট রেডিও</string>
     <string name="settings_radio_open">রেডিও খুলুন</string>
     <string name="settings_bangla_numerals">বাংলা সংখ্যা</string>

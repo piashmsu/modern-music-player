@@ -8,7 +8,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -17,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.gsmtrick.musicplayer.effects.BeatBus
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -100,16 +108,26 @@ fun AnimatedAuroraBackground(
 }
 
 /**
- * A pulsing border around the screen edge — feel like a beat-driven glow.
+ * A pulsing border around the screen edge that reacts to detected
+ * beats. The bus-published bass intensity drives stroke + alpha; each
+ * onset gives an extra flash that decays in ~250 ms. When [beatReactive]
+ * is false (or when the detector isn't producing data) the overlay
+ * falls back to the v3.2 ambient rainbow pulse so users without a
+ * working Visualizer still see something.
  */
 @Composable
 fun EdgeLightingOverlay(
     modifier: Modifier = Modifier,
     active: Boolean,
+    beatReactive: Boolean = true,
+    thicknessDp: Int = 12,
+    intensity: Float = 0.8f,
+    colorMode: String = "rainbow",
+    accent: Color = Color.Unspecified,
 ) {
     if (!active) return
     val transition = rememberInfiniteTransition(label = "edge")
-    val pulse by transition.animateFloat(
+    val ambientPulse by transition.animateFloat(
         initialValue = 0.4f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -118,7 +136,7 @@ fun EdgeLightingOverlay(
         ),
         label = "pulse",
     )
-    val hue by transition.animateFloat(
+    val ambientHue by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -127,17 +145,64 @@ fun EdgeLightingOverlay(
         ),
         label = "hue",
     )
+
+    var bass by remember { mutableFloatStateOf(0f) }
+    var beatFlash by remember { mutableFloatStateOf(0f) }
+    var lastBeat by remember { mutableIntStateOf(-1) }
+    var spunHue by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(beatReactive) {
+        if (!beatReactive) return@LaunchedEffect
+        var prev = -1L
+        while (true) {
+            val now = withFrameNanos { it }
+            val dt = if (prev > 0) (now - prev).coerceAtLeast(0L) / 1_000_000_000f else 0f
+            prev = now
+            val pulse = BeatBus.pulses.value
+            bass = pulse.bass
+            if (pulse.beat != lastBeat) {
+                lastBeat = pulse.beat
+                beatFlash = 1f
+            }
+            beatFlash = (beatFlash - dt * 4f).coerceAtLeast(0f)
+            spunHue = (spunHue + (24f + bass * 240f) * dt) % 360f
+        }
+    }
+
     Canvas(modifier = modifier) {
-        val stroke = 6.dp.toPx()
-        val color = Color.hsv(hue, 0.85f, 1f, alpha = 0.45f * pulse)
+        val stroke = thicknessDp.dp.toPx()
+        val pulseStrength = if (beatReactive) {
+            (0.35f + bass * 0.65f + beatFlash * 0.45f).coerceIn(0f, 1.4f)
+        } else {
+            ambientPulse
+        }
+        val hue = if (beatReactive) spunHue else ambientHue
+        val baseAlpha = (intensity * (0.45f + 0.55f * pulseStrength)).coerceIn(0f, 1f)
+        val palette = when (colorMode) {
+            "single" -> {
+                val a = if (accent != Color.Unspecified) accent else Color.hsv(280f, 0.85f, 1f)
+                listOf(
+                    a.copy(alpha = baseAlpha),
+                    a.copy(alpha = baseAlpha * 0.7f),
+                    a.copy(alpha = baseAlpha),
+                )
+            }
+            "album" -> {
+                val a = if (accent != Color.Unspecified) accent else Color.hsv(hue, 0.7f, 1f)
+                listOf(
+                    a.copy(alpha = baseAlpha),
+                    Color.hsv((hue + 30f) % 360f, 0.7f, 1f, baseAlpha * 0.85f),
+                    a.copy(alpha = baseAlpha),
+                )
+            }
+            else -> listOf(
+                Color.hsv(hue, 0.85f, 1f, baseAlpha),
+                Color.hsv((hue + 120f) % 360f, 0.85f, 1f, baseAlpha),
+                Color.hsv((hue + 240f) % 360f, 0.85f, 1f, baseAlpha),
+            )
+        }
         drawRoundRect(
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    color,
-                    Color.hsv((hue + 120f) % 360f, 0.85f, 1f, 0.45f * pulse),
-                    Color.hsv((hue + 240f) % 360f, 0.85f, 1f, 0.45f * pulse),
-                ),
-            ),
+            brush = Brush.linearGradient(colors = palette),
             topLeft = Offset(stroke / 2f, stroke / 2f),
             size = Size(size.width - stroke, size.height - stroke),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx()),

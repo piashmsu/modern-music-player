@@ -579,6 +579,30 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefsRepo.setEdgeLighting(v) }
     }
 
+    // v3.3 setters
+    fun setEdgeLightingBeatReactive(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingBeatReactive(v) }
+    fun setEdgeLightingSystemWide(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingSystemWide(v) }
+    fun setEdgeLightingThickness(dp: Int) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingThickness(dp) }
+    fun setEdgeLightingIntensity(v: Float) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingIntensity(v) }
+    fun setEdgeLightingColorMode(v: String) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingColorMode(v) }
+    fun setFlashOnBeat(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setFlashOnBeat(v) }
+    fun setVibrateOnBeat(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setVibrateOnBeat(v) }
+    fun setSubBassBoost(v: Int) {
+        val cur = _prefs.value.effects
+        viewModelScope.launch { prefsRepo.setEffects(cur.copy(subBassBoost = v.coerceIn(0, 1000))) }
+    }
+    fun setBassPunch(v: Int) {
+        val cur = _prefs.value.effects
+        viewModelScope.launch { prefsRepo.setEffects(cur.copy(bassPunch = v.coerceIn(0, 1000))) }
+    }
+
     fun setAnimatedWallpaper(v: Boolean) {
         viewModelScope.launch { prefsRepo.setAnimatedWallpaper(v) }
     }
@@ -651,36 +675,16 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
     }
 
     // v3.2 setters
-    fun setLastFmEnabled(v: Boolean) = viewModelScope.launch { prefsRepo.setLastFmEnabled(v) }
     fun setBanglaNumerals(v: Boolean) = viewModelScope.launch {
         prefsRepo.setBanglaNumerals(v)
         com.gsmtrick.musicplayer.util.banglaNumeralsGlobal = v
     }
-    fun setLastFmWifiOnly(v: Boolean) = viewModelScope.launch { prefsRepo.setLastFmWifiOnly(v) }
     fun setAutoTagFromFilename(v: Boolean) = viewModelScope.launch { prefsRepo.setAutoTagFromFilename(v) }
     fun setLastRadio(id: String) = viewModelScope.launch { prefsRepo.setLastRadio(id) }
     fun saveRadioStation(station: com.gsmtrick.musicplayer.data.RadioStation) =
         viewModelScope.launch { prefsRepo.saveRadioStation(station) }
     fun deleteRadioStation(id: String) =
         viewModelScope.launch { prefsRepo.deleteRadioStation(id) }
-    fun clearLastFmSession() = viewModelScope.launch { prefsRepo.clearLastFmSession() }
-
-    /**
-     * Authenticate with Last.fm using mobile-session flow. On success, the
-     * server returns a session key which is persisted and used for all
-     * subsequent scrobbles. Returns null on success, or the error message.
-     */
-    suspend fun lastFmLogin(username: String, password: String): String? {
-        val repo = com.gsmtrick.musicplayer.data.LastFmRepository(getApplication())
-        if (!repo.isConfigured) return "Last.fm API key not built into this APK"
-        val r = repo.authenticate(username, password)
-        return if (r.isSuccess) {
-            prefsRepo.setLastFmSession(username, r.getOrNull().orEmpty())
-            null
-        } else {
-            r.exceptionOrNull()?.message ?: "Login failed"
-        }
-    }
 
     /**
      * Play an arbitrary streaming URL (used for internet radio). Builds a
@@ -839,6 +843,71 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
             delay(minutes * 60_000L)
             controller?.pause()
             prefsRepo.setSleep(0)
+        }
+    }
+
+    // v3.4 — Big ship setters
+    fun setSyncedLyricsEnabled(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setSyncedLyricsEnabled(v) }
+
+    fun setLyricsTranslateTo(code: String) =
+        viewModelScope.launch { prefsRepo.setLyricsTranslateTo(code) }
+
+    fun setAutoCrossfadeByGenre(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setAutoCrossfadeByGenre(v) }
+
+    fun setSmartSleepEnabled(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setSmartSleepEnabled(v) }
+
+    fun setSmartSleepIdleMin(min: Int) =
+        viewModelScope.launch { prefsRepo.setSmartSleepIdleMin(min) }
+
+    fun setDailyGoalMinutes(min: Int) =
+        viewModelScope.launch { prefsRepo.setDailyGoalMinutes(min) }
+
+    fun setSleepSoundVolume(name: String, volume: Int) =
+        viewModelScope.launch { prefsRepo.setSleepSoundVolume(name, volume) }
+
+    fun setVisualizerMode(mode: String) =
+        viewModelScope.launch { prefsRepo.setVisualizerMode(mode) }
+
+    fun setDualOutputMirror(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setDualOutputMirror(v) }
+
+    fun setCastDeviceId(id: String) =
+        viewModelScope.launch { prefsRepo.setCastDeviceId(id) }
+
+    fun setPerSongEffects(songId: String, fx: com.gsmtrick.musicplayer.data.EffectsState?) =
+        viewModelScope.launch { prefsRepo.setPerSongEffects(songId, fx) }
+
+    /** Build a mood-based playlist on demand from the loaded library. */
+    fun moodMix(mood: com.gsmtrick.musicplayer.data.Mood, limit: Int = 30): List<Song> =
+        com.gsmtrick.musicplayer.data.MoodMixer.mix(_library.value.songs, mood, limit)
+
+    /** Find similar songs to the currently-playing track. */
+    fun similarSongs(seed: Song? = _state.value.currentSong, limit: Int = 25): List<Song> {
+        val s = seed ?: return emptyList()
+        return com.gsmtrick.musicplayer.data.SimilarSongs.similarTo(s, _library.value.songs, limit)
+    }
+
+    /** Replace the current queue with [songs] and start playing. */
+    fun playQueue(songs: List<Song>) {
+        if (songs.isEmpty()) return
+        playSong(songs.first(), songs)
+    }
+
+    /** Daily goal progress: minutes played today (0..goal). */
+    fun minutesPlayedToday(): Int {
+        val today = (System.currentTimeMillis() / 86_400_000L).toString()
+        return _prefs.value.dailyMinutesMap[today] ?: 0
+    }
+
+    /** Snapshot of the past N days (most-recent first). Used for the share card. */
+    fun dailyMinutesHistory(days: Int = 14): List<Int> {
+        val today = System.currentTimeMillis() / 86_400_000L
+        val map = _prefs.value.dailyMinutesMap
+        return (0 until days).map { offset ->
+            map[(today - offset).toString()] ?: 0
         }
     }
 

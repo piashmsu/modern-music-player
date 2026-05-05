@@ -321,10 +321,20 @@ private fun ForYouContent(
     favorites: Set<String>,
 ) {
     val sections = remember(viewModel.library.value, viewModel.prefs.value) {
-        listOf(
+        listOfNotNull(
             "Daily Mix" to viewModel.dailyMix(),
             "On Repeat" to viewModel.onRepeatSongs(),
             "Discovery" to viewModel.discoverySongs(),
+            // v3.4 — Mood Mixes (auto-curated playlists).
+            "🌅 Morning" to viewModel.moodMix(com.gsmtrick.musicplayer.data.Mood.Morning),
+            "🏋️ Workout" to viewModel.moodMix(com.gsmtrick.musicplayer.data.Mood.Workout),
+            "🎧 Focus" to viewModel.moodMix(com.gsmtrick.musicplayer.data.Mood.Focus),
+            "🌙 Sleep" to viewModel.moodMix(com.gsmtrick.musicplayer.data.Mood.Sleep),
+            "🚗 Drive" to viewModel.moodMix(com.gsmtrick.musicplayer.data.Mood.Drive),
+            // v3.4 — Similar songs to current track.
+            state.currentSong?.let { current ->
+                "Similar to ${current.title.take(20)}" to viewModel.similarSongs(current)
+            },
             "Mood: Chill" to viewModel.moodSongs("chill"),
             "Mood: Upbeat" to viewModel.moodSongs("upbeat"),
             "Tempo: Fast" to viewModel.tempoSongs(true),

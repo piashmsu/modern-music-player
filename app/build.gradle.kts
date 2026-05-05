@@ -1,21 +1,7 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-
-// Read optional Last.fm API key from local.properties (preferred) or from
-// the LASTFM_API_KEY environment variable. Never commit the key — leaving
-// it empty disables scrobbling at runtime.
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-val lastfmApiKey: String =
-    localProps.getProperty("lastfm.apiKey") ?: System.getenv("LASTFM_API_KEY") ?: ""
-val lastfmApiSecret: String =
-    localProps.getProperty("lastfm.apiSecret") ?: System.getenv("LASTFM_API_SECRET") ?: ""
 
 android {
     namespace = "com.gsmtrick.musicplayer"
@@ -25,15 +11,12 @@ android {
         applicationId = "com.gsmtrick.musicplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 8
-        versionName = "3.2"
+        versionCode = 10
+        versionName = "3.4"
 
         vectorDrawables {
             useSupportLibrary = true
         }
-
-        buildConfigField("String", "LASTFM_API_KEY", "\"${lastfmApiKey}\"")
-        buildConfigField("String", "LASTFM_API_SECRET", "\"${lastfmApiSecret}\"")
     }
 
     buildTypes {
@@ -120,6 +103,21 @@ dependencies {
     // not Play-Store safe.
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // v3.4 — Big ship
+    // ML Kit on-device translation for synced lyrics. Models are
+    // lazily downloaded the first time the user picks a target language
+    // and cached on-device thereafter (offline after that).
+    implementation("com.google.mlkit:translate:17.0.3")
+    // Google Cast SDK for Chromecast support. The CastContext only
+    // initializes if Google Play Services is available on the device.
+    implementation("androidx.mediarouter:mediarouter:1.7.0")
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    // Tag editor (ID3v2 / Vorbis / MP4 / FLAC) for v3.4 tag editor.
+    implementation("net.jthink:jaudiotagger:3.0.1")
+    // Glance for v3.4 home-screen widget.
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

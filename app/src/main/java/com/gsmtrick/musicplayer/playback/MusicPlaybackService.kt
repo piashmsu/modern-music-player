@@ -20,11 +20,18 @@ import androidx.media3.session.MediaSessionService
 import com.gsmtrick.musicplayer.MainActivity
 import com.gsmtrick.musicplayer.lockscreen.LockScreenActivity
 import com.gsmtrick.musicplayer.data.EffectsState
-import com.gsmtrick.musicplayer.data.LastFmRepository
 import com.gsmtrick.musicplayer.data.MusicRepository
 import com.gsmtrick.musicplayer.data.PreferencesRepository
-import com.gsmtrick.musicplayer.data.Song
 import com.gsmtrick.musicplayer.effects.AudioEffectsController
+import com.gsmtrick.musicplayer.effects.BeatDetector
+import com.gsmtrick.musicplayer.effects.BeatHaptics
+import com.gsmtrick.musicplayer.effects.BeatStrobe
+import com.gsmtrick.musicplayer.effects.DualOutputRouter
+import com.gsmtrick.musicplayer.effects.EdgeLightingService
+import com.gsmtrick.musicplayer.effects.SmartSleepDetector
+import com.gsmtrick.musicplayer.playback.GenreCrossfadeAdvisor
+import com.gsmtrick.musicplayer.data.ReplayGainScanner
+import com.gsmtrick.musicplayer.widget.PlayerWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +49,9 @@ class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private val effects = AudioEffectsController()
+    private val beatDetector = BeatDetector()
+    private var beatStrobe: BeatStrobe? = null
+    private var beatHaptics: BeatHaptics? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var prefs: PreferencesRepository
 
@@ -59,12 +69,19 @@ class MusicPlaybackService : MediaSessionService() {
     private var fadeInJob: Job? = null
     private var baseVolume: Float = 1f
 
-    // Last.fm scrobbling state
-    private val lastfmRepo by lazy { LastFmRepository(applicationContext) }
+    // v3.4 — Big ship state
+    private var autoCrossfadeByGenre: Boolean = false
+    private var perSongEffects: Map<String, EffectsState> = emptyMap()
+    private var replayGainEnabled: Boolean = false
+    private var smartSleepDetector: SmartSleepDetector? = null
+    private var smartSleepEnabled: Boolean = false
+    private var smartSleepIdleMin: Int = 5
+    private var dailyMinutesJob: Job? = null
+    private var dualOutputMirror: Boolean = false
+    private val dualOutputRouter by lazy { DualOutputRouter(applicationContext) }
+
+    @Suppress("unused")
     private val musicRepo by lazy { MusicRepository(applicationContext) }
-    private var currentSongStartedAtSec: Long = 0L
-    private var currentScrobbleSong: Song? = null
-    private var scrobbleJob: Job? = null
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -127,6 +144,7 @@ class MusicPlaybackService : MediaSessionService() {
         exoPlayer.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 effects.attach(audioSessionId)
+                beatDetector.attach(audioSessionId)
                 publishAudioSessionId(audioSessionId)
                 scope.launch {
                     val state = prefs.prefs.map { it.effects }.distinctUntilChanged()
@@ -135,7 +153,34 @@ class MusicPlaybackService : MediaSessionService() {
             }
         })
         effects.attach(exoPlayer.audioSessionId)
+        beatDetector.attach(exoPlayer.audioSessionId)
         publishAudioSessionId(exoPlayer.audioSessionId)
+
+        beatStrobe = BeatStrobe(applicationContext)
+        beatHaptics = BeatHaptics(applicationContext)
+
+        // Drive the system-wide edge-lighting overlay service, beat strobe
+        // and beat haptics to mirror user preference + playback state.
+        scope.launch {
+            prefs.prefs.collectLatest { p ->
+                val isPlaying = exoPlayer.isPlaying
+                val wantOverlay = p.edgeLightingSystemWide && p.edgeLighting && isPlaying
+                EdgeLightingService.setRunning(applicationContext, wantOverlay)
+                if (p.flashOnBeat && isPlaying) beatStrobe?.start() else beatStrobe?.stop()
+                if (p.vibrateOnBeat && isPlaying) beatHaptics?.start() else beatHaptics?.stop()
+            }
+        }
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                scope.launch {
+                    val p = prefs.prefs.first()
+                    val wantOverlay = p.edgeLightingSystemWide && p.edgeLighting && isPlaying
+                    EdgeLightingService.setRunning(applicationContext, wantOverlay)
+                    if (p.flashOnBeat && isPlaying) beatStrobe?.start() else beatStrobe?.stop()
+                    if (p.vibrateOnBeat && isPlaying) beatHaptics?.start() else beatHaptics?.stop()
+                }
+            }
+        })
 
         scope.launch {
             prefs.prefs.collectLatest { p ->
@@ -157,6 +202,24 @@ class MusicPlaybackService : MediaSessionService() {
                     lastSleepMinutes = p.sleepMinutes
                     handleSleepTimer(p.sleepMinutes)
                 }
+                // v3.4 — Big ship
+                autoCrossfadeByGenre = p.autoCrossfadeByGenre
+                perSongEffects = p.perSongEffects
+                replayGainEnabled = p.effects.replayGainEnabled
+                smartSleepEnabled = p.smartSleepEnabled
+                smartSleepIdleMin = p.smartSleepIdleMin
+                dualOutputMirror = p.dualOutputMirror
+                if (smartSleepEnabled && exoPlayer.isPlaying) startSmartSleep()
+                else stopSmartSleep()
+                PlayerWidgetProvider.refreshAll(applicationContext)
+            }
+        }
+        // v3.4 — Track minutes played per day for streaks. Increments
+        // every minute the player is actively playing.
+        dailyMinutesJob = scope.launch {
+            while (true) {
+                delay(60_000)
+                if (exoPlayer.isPlaying) prefs.recordDailyPlayMinutes(1)
             }
         }
 
@@ -293,10 +356,8 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     /**
-     * Lightweight loop that polls the player position to drive:
-     *  1. End-of-track volume fade-out for crossfade transitions.
-     *  2. Last.fm scrobble dispatch once the song has been played for the
-     *     standard >=30 s and >= 50 % rule.
+     * Lightweight loop that polls the player position to drive end-of-track
+     * crossfade volume fade-out. Last.fm scrobbling was removed in v3.4.
      */
     private suspend fun runCrossfadeAndScrobbleLoop(p: ExoPlayer) {
         var lastFadeApplied = false
@@ -305,9 +366,6 @@ class MusicPlaybackService : MediaSessionService() {
             val dur = p.duration
             val playing = p.isPlaying
             val cf = crossfadeSec
-            // Crossfade tail fade-out: smoothly drop volume during the last
-            // [cf] seconds of the track. Skip when paused or when the user
-            // disabled crossfade.
             if (playing && cf > 0 && dur > 0 && dur != C.TIME_UNSET) {
                 val remaining = dur - pos
                 val fadeMs = (cf * 1000L).coerceAtMost(dur / 2)
@@ -322,26 +380,6 @@ class MusicPlaybackService : MediaSessionService() {
             } else if (lastFadeApplied) {
                 p.volume = baseVolume
                 lastFadeApplied = false
-            }
-
-            // Last.fm scrobble dispatch: send once we cross the 50%/4-min mark.
-            val song = currentScrobbleSong
-            if (song != null && playing && scrobbleJob == null) {
-                val played = pos
-                val durMs = if (dur > 0 && dur != C.TIME_UNSET) dur else song.durationMs
-                val threshold = minOf(durMs / 2, 4 * 60_000L)
-                if (played >= threshold && played >= 30_000L) {
-                    val s = song
-                    val started = currentSongStartedAtSec
-                    scrobbleJob = scope.launch(Dispatchers.IO) {
-                        runCatching {
-                            val pp = prefs.prefs.first()
-                            if (pp.lastfmEnabled && pp.lastfmSessionKey.isNotEmpty()) {
-                                lastfmRepo.scrobble(pp.lastfmSessionKey, s, started)
-                            }
-                        }
-                    }
-                }
             }
             delay(500)
         }
@@ -361,22 +399,84 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     private fun onTrackStarted(mediaId: String?) {
-        currentScrobbleSong = null
-        scrobbleJob?.cancel()
-        scrobbleJob = null
-        if (mediaId == null) return
-        currentSongStartedAtSec = System.currentTimeMillis() / 1000L
-        scope.launch(Dispatchers.IO) {
-            val pp = runCatching { prefs.prefs.first() }.getOrNull() ?: return@launch
-            if (!pp.lastfmEnabled || pp.lastfmSessionKey.isEmpty()) return@launch
-            // Resolve song metadata via MediaStore lookup. mediaId is the song
-            // row id stringified; loadSongs() returns the entire library so we
-            // pick from there for accurate duration/artist/album.
-            val songs = runCatching { musicRepo.loadSongs() }.getOrNull() ?: return@launch
-            val song = songs.firstOrNull { it.id.toString() == mediaId } ?: return@launch
-            currentScrobbleSong = song
-            runCatching { lastfmRepo.nowPlaying(pp.lastfmSessionKey, song) }
+        val id = mediaId ?: return
+        val p = player ?: return
+        // v3.4 — apply per-song effects override if any.
+        perSongEffects[id]?.let { fx -> effects.apply(fx) }
+        // v3.4 — adapt crossfade duration to track genre when enabled.
+        if (autoCrossfadeByGenre) {
+            scope.launch {
+                val title = p.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()
+                val artist = p.currentMediaItem?.mediaMetadata?.artist?.toString().orEmpty()
+                val syntheticSong = com.gsmtrick.musicplayer.data.Song(
+                    id = id.toLongOrNull() ?: 0L,
+                    title = title,
+                    artist = artist,
+                    album = p.currentMediaItem?.mediaMetadata?.albumTitle?.toString().orEmpty(),
+                    albumId = 0L,
+                    durationMs = p.duration.coerceAtLeast(0),
+                    uri = android.net.Uri.EMPTY,
+                    artworkUri = null,
+                )
+                val userMax = prefs.prefs.first().effects.crossfadeSec.coerceIn(0, 12)
+                crossfadeSec = GenreCrossfadeAdvisor.crossfadeForSong(syntheticSong, userMax)
+            }
         }
+        // v3.4 — Replay-gain volume normalization (best-effort, tag-based).
+        if (replayGainEnabled) {
+            scope.launch {
+                val path = runCatching { p.currentMediaItem?.localConfiguration?.uri?.path }
+                    .getOrNull()
+                val mult = ReplayGainScanner.multiplierFor(path) ?: 1f
+                baseVolume = mult.coerceIn(0.1f, 1f)
+                runCatching { p.volume = baseVolume }
+            }
+        }
+        // v3.4 — Dual output mirror (best-effort).
+        if (dualOutputMirror) {
+            scope.launch {
+                val songs = musicRepo.loadSongs()
+                val match = songs.firstOrNull { it.id.toString() == id }
+                if (match != null) dualOutputRouter.start(match)
+            }
+        } else {
+            dualOutputRouter.stop()
+        }
+    }
+
+    private fun startSmartSleep() {
+        if (smartSleepDetector != null) return
+        val det = SmartSleepDetector(
+            context = applicationContext,
+            idleTimeoutMs = smartSleepIdleMin.coerceAtLeast(1) * 60_000L,
+            onIdle = {
+                scope.launch {
+                    val p = player ?: return@launch
+                    val totalMs = 30_000L
+                    val steps = 30
+                    val orig = p.volume
+                    for (i in 0..steps) {
+                        p.volume = orig * (1f - i.toFloat() / steps)
+                        delay(totalMs / steps)
+                    }
+                    p.pause()
+                    p.volume = orig
+                }
+            },
+        )
+        det.start()
+        smartSleepDetector = det
+        scope.launch {
+            while (smartSleepDetector === det) {
+                delay(30_000L)
+                det.checkIdle()
+            }
+        }
+    }
+
+    private fun stopSmartSleep() {
+        smartSleepDetector?.stop()
+        smartSleepDetector = null
     }
 
     private fun handleSleepTimer(minutes: Int) {
@@ -426,7 +526,14 @@ class MusicPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
         scope.cancel()
+        dailyMinutesJob?.cancel()
+        stopSmartSleep()
+        runCatching { dualOutputRouter.stop() }
         effects.release()
+        beatDetector.release()
+        beatStrobe?.stop()
+        beatHaptics?.stop()
+        EdgeLightingService.setRunning(applicationContext, false)
         mediaSession?.run {
             player.release()
             release()

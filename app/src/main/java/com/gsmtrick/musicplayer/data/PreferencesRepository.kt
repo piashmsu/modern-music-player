@@ -33,6 +33,13 @@ data class EffectsState(
     val crossfadeSec: Int = 0, // 0..12
     val replayGainEnabled: Boolean = false,
     val sleepFadeOut: Boolean = true, // fade out at end of sleep timer
+    // v3.3 — Tactile Bass: software low-shelf on top of hardware BassBoost
+    // (0..1000). Adds extra +6..+12 dB of headroom in the 30-200 Hz band
+    // by lifting the lowest two equalizer bands.
+    val subBassBoost: Int = 0,
+    // v3.3 — Bass Punch: amplifies transient bass kicks via the loudness
+    // enhancer (0..1000). Stacks on top of [loudness].
+    val bassPunch: Int = 0,
 )
 
 data class AppPrefs(
@@ -106,14 +113,47 @@ data class AppPrefs(
     val notifButtonStyle: String = "5", // "3" or "5"
     // v3.2 mega batch
     val banglaNumerals: Boolean = false,
-    val lastfmEnabled: Boolean = false,
-    val lastfmUsername: String = "",
-    val lastfmSessionKey: String = "",
-    val lastfmScrobbleOverWifi: Boolean = false, // false = always; true = wifi only
     val radioStations: List<RadioStation> = emptyList(), // user-added; defaults shown separately
     val lastRadioId: String = "",
     val tabOrder: List<String> = emptyList(), // empty -> use default tab order
     val autoTagFromFilename: Boolean = false,
+    // v3.3 — Beat Light & Bass
+    val edgeLightingBeatReactive: Boolean = true,
+    val edgeLightingSystemWide: Boolean = false, // requires SYSTEM_ALERT_WINDOW
+    val edgeLightingThicknessDp: Int = 12, // 4..32
+    val edgeLightingIntensity: Float = 0.8f, // 0f..1f
+    val edgeLightingColorMode: String = "rainbow", // rainbow | album | single
+    val flashOnBeat: Boolean = false, // strobe phone torch on bass kicks
+    val vibrateOnBeat: Boolean = false, // haptic pulse on bass kicks
+    // v3.4 — Big ship
+    /** Per-song effects override (JSON: songId -> serialized EffectsState). */
+    val perSongEffects: Map<String, EffectsState> = emptyMap(),
+    /** Synced lyrics tap-to-seek + karaoke highlight. */
+    val syncedLyricsEnabled: Boolean = true,
+    /** Auto-translate lyrics to this BCP-47 code (en/bn/hi/ar/...). Empty = off. */
+    val lyricsTranslateTo: String = "",
+    /** Auto crossfade adapts to track genre/tempo (1s for fast, 5s for slow). */
+    val autoCrossfadeByGenre: Boolean = false,
+    /** Smart sleep: detect motion via accelerometer, auto-fade out when idle. */
+    val smartSleepEnabled: Boolean = false,
+    /** Smart sleep idle timeout in minutes before fade-out triggers. */
+    val smartSleepIdleMin: Int = 5,
+    /** Daily listening goal in minutes (0 = disabled). */
+    val dailyGoalMinutes: Int = 30,
+    /** Streak counter — consecutive days with at least dailyGoalMinutes of playback. */
+    val streakDays: Int = 0,
+    /** Last day (epoch / 86400) we counted toward the streak. */
+    val streakLastDay: Long = 0L,
+    /** Map of (epoch / 86400) -> minutes played that day for last 30 days. */
+    val dailyMinutesMap: Map<String, Int> = emptyMap(),
+    /** Sleep sounds mixer (rain, ocean, white, brown, pink, fire) -> volume 0..100. */
+    val sleepSoundsVolumes: Map<String, Int> = emptyMap(),
+    /** Visualizer mode: bars | spectrum | waveform | particles | radial. */
+    val visualizerMode: String = "bars",
+    /** Mirror playback to BT and on-device speaker simultaneously (best-effort). */
+    val dualOutputMirror: Boolean = false,
+    /** Cast device id when actively casting (empty = local). */
+    val castDeviceId: String = "",
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -207,14 +247,35 @@ class PreferencesRepository(private val context: Context) {
         val NOTIF_STYLE = stringPreferencesKey("notif_style")
         // v3.2
         val BANGLA_NUMS = booleanPreferencesKey("bangla_nums")
-        val LASTFM_ON = booleanPreferencesKey("lastfm_on")
-        val LASTFM_USER = stringPreferencesKey("lastfm_user")
-        val LASTFM_SK = stringPreferencesKey("lastfm_sk")
-        val LASTFM_WIFI = booleanPreferencesKey("lastfm_wifi")
         val RADIO_STATIONS = stringPreferencesKey("radio_stations") // JSON
         val LAST_RADIO = stringPreferencesKey("last_radio")
         val TAB_ORDER = stringPreferencesKey("tab_order") // CSV
         val AUTO_TAG = booleanPreferencesKey("auto_tag")
+        // v3.3 — Beat Light & Bass
+        val SUB_BASS = intPreferencesKey("sub_bass")
+        val BASS_PUNCH = intPreferencesKey("bass_punch")
+        val EDGE_BEAT = booleanPreferencesKey("edge_beat")
+        val EDGE_SYS = booleanPreferencesKey("edge_sys")
+        val EDGE_THICK = intPreferencesKey("edge_thick")
+        val EDGE_INT = floatPreferencesKey("edge_intensity")
+        val EDGE_COLOR = stringPreferencesKey("edge_color")
+        val FLASH_BEAT = booleanPreferencesKey("flash_beat")
+        val VIB_BEAT = booleanPreferencesKey("vib_beat")
+        // v3.4 — Big ship
+        val PER_SONG_FX = stringPreferencesKey("per_song_fx") // JSON
+        val SYNC_LYRICS = booleanPreferencesKey("sync_lyrics")
+        val LYR_TRANS = stringPreferencesKey("lyr_trans")
+        val AUTO_CROSS_GENRE = booleanPreferencesKey("auto_cross_genre")
+        val SMART_SLEEP = booleanPreferencesKey("smart_sleep")
+        val SMART_SLEEP_IDLE = intPreferencesKey("smart_sleep_idle")
+        val DAILY_GOAL = intPreferencesKey("daily_goal")
+        val STREAK_DAYS = intPreferencesKey("streak_days")
+        val STREAK_LAST = androidx.datastore.preferences.core.longPreferencesKey("streak_last")
+        val DAILY_MINS = stringPreferencesKey("daily_mins") // JSON map day->mins
+        val SLEEP_SOUNDS = stringPreferencesKey("sleep_sounds") // JSON map name->vol
+        val VIS_MODE = stringPreferencesKey("vis_mode")
+        val DUAL_OUT = booleanPreferencesKey("dual_out")
+        val CAST_DEV = stringPreferencesKey("cast_dev")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -253,6 +314,8 @@ class PreferencesRepository(private val context: Context) {
                 crossfadeSec = this[K.CROSSFADE] ?: 0,
                 replayGainEnabled = this[K.REPLAY_GAIN] ?: false,
                 sleepFadeOut = this[K.SLEEP_FADE] ?: true,
+                subBassBoost = this[K.SUB_BASS] ?: 0,
+                bassPunch = this[K.BASS_PUNCH] ?: 0,
             ),
             favorites = this[K.FAVORITES] ?: emptySet(),
             customEqPresets = decodePresets(this[K.CUSTOM_PRESETS]),
@@ -309,15 +372,92 @@ class PreferencesRepository(private val context: Context) {
             splashEnabled = this[K.SPLASH] ?: true,
             notifButtonStyle = this[K.NOTIF_STYLE] ?: "5",
             banglaNumerals = this[K.BANGLA_NUMS] ?: false,
-            lastfmEnabled = this[K.LASTFM_ON] ?: false,
-            lastfmUsername = this[K.LASTFM_USER] ?: "",
-            lastfmSessionKey = this[K.LASTFM_SK] ?: "",
-            lastfmScrobbleOverWifi = this[K.LASTFM_WIFI] ?: false,
             radioStations = decodeStations(this[K.RADIO_STATIONS]),
             lastRadioId = this[K.LAST_RADIO] ?: "",
             tabOrder = (this[K.TAB_ORDER] ?: "").split(",").filter { it.isNotBlank() },
             autoTagFromFilename = this[K.AUTO_TAG] ?: false,
+            edgeLightingBeatReactive = this[K.EDGE_BEAT] ?: true,
+            edgeLightingSystemWide = this[K.EDGE_SYS] ?: false,
+            edgeLightingThicknessDp = this[K.EDGE_THICK] ?: 12,
+            edgeLightingIntensity = this[K.EDGE_INT] ?: 0.8f,
+            edgeLightingColorMode = this[K.EDGE_COLOR] ?: "rainbow",
+            flashOnBeat = this[K.FLASH_BEAT] ?: false,
+            vibrateOnBeat = this[K.VIB_BEAT] ?: false,
+            perSongEffects = decodePerSongEffects(this[K.PER_SONG_FX]),
+            syncedLyricsEnabled = this[K.SYNC_LYRICS] ?: true,
+            lyricsTranslateTo = this[K.LYR_TRANS] ?: "",
+            autoCrossfadeByGenre = this[K.AUTO_CROSS_GENRE] ?: false,
+            smartSleepEnabled = this[K.SMART_SLEEP] ?: false,
+            smartSleepIdleMin = this[K.SMART_SLEEP_IDLE] ?: 5,
+            dailyGoalMinutes = this[K.DAILY_GOAL] ?: 30,
+            streakDays = this[K.STREAK_DAYS] ?: 0,
+            streakLastDay = this[K.STREAK_LAST] ?: 0L,
+            dailyMinutesMap = decodeIntMap(this[K.DAILY_MINS]),
+            sleepSoundsVolumes = decodeIntMap(this[K.SLEEP_SOUNDS]),
+            visualizerMode = this[K.VIS_MODE] ?: "bars",
+            dualOutputMirror = this[K.DUAL_OUT] ?: false,
+            castDeviceId = this[K.CAST_DEV] ?: "",
         )
+    }
+
+    private fun decodePerSongEffects(json: String?): Map<String, EffectsState> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val o = JSONObject(json)
+            val out = mutableMapOf<String, EffectsState>()
+            o.keys().forEach { k ->
+                val e = o.getJSONObject(k)
+                val bandsArr = e.optJSONArray("bands")
+                val bands: List<Short> = if (bandsArr != null) {
+                    (0 until bandsArr.length()).map { bandsArr.getInt(it).toShort() }
+                } else List(EQ_BANDS) { 0 }
+                out[k] = EffectsState(
+                    equalizerEnabled = e.optBoolean("eq_on", false),
+                    bands = bands,
+                    preset = e.optString("preset", "Custom"),
+                    bassBoost = e.optInt("bass", 0),
+                    virtualizer = e.optInt("virt", 0),
+                    loudness = e.optInt("loud", 0),
+                    reverbPreset = e.optInt("rev", 0),
+                    vocalBoost = e.optInt("vocal", 0),
+                    pitchSemitones = e.optDouble("pitch", 0.0).toFloat(),
+                    balance = e.optDouble("balance", 0.0).toFloat(),
+                    monoMode = e.optString("mono", "stereo"),
+                    crossfadeSec = e.optInt("cross", 0),
+                    replayGainEnabled = e.optBoolean("rg", false),
+                    sleepFadeOut = e.optBoolean("sleep_fade", true),
+                    subBassBoost = e.optInt("sub", 0),
+                    bassPunch = e.optInt("punch", 0),
+                )
+            }
+            out.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodePerSongEffects(m: Map<String, EffectsState>): String {
+        val o = JSONObject()
+        m.forEach { (id, e) ->
+            val obj = JSONObject().apply {
+                put("eq_on", e.equalizerEnabled)
+                put("bands", JSONArray().also { a -> e.bands.forEach { a.put(it.toInt()) } })
+                put("preset", e.preset)
+                put("bass", e.bassBoost)
+                put("virt", e.virtualizer)
+                put("loud", e.loudness)
+                put("rev", e.reverbPreset)
+                put("vocal", e.vocalBoost)
+                put("pitch", e.pitchSemitones.toDouble())
+                put("balance", e.balance.toDouble())
+                put("mono", e.monoMode)
+                put("cross", e.crossfadeSec)
+                put("rg", e.replayGainEnabled)
+                put("sleep_fade", e.sleepFadeOut)
+                put("sub", e.subBassBoost)
+                put("punch", e.bassPunch)
+            }
+            o.put(id, obj)
+        }
+        return o.toString()
     }
 
     private fun decodeStations(json: String?): List<RadioStation> {
@@ -354,21 +494,6 @@ class PreferencesRepository(private val context: Context) {
     // v3.2 setters
     suspend fun setBanglaNumerals(v: Boolean) =
         context.dataStore.edit { it[K.BANGLA_NUMS] = v }
-    suspend fun setLastFmEnabled(v: Boolean) =
-        context.dataStore.edit { it[K.LASTFM_ON] = v }
-    suspend fun setLastFmSession(username: String, sessionKey: String) =
-        context.dataStore.edit {
-            it[K.LASTFM_USER] = username
-            it[K.LASTFM_SK] = sessionKey
-            it[K.LASTFM_ON] = sessionKey.isNotEmpty()
-        }
-    suspend fun clearLastFmSession() = context.dataStore.edit {
-        it[K.LASTFM_USER] = ""
-        it[K.LASTFM_SK] = ""
-        it[K.LASTFM_ON] = false
-    }
-    suspend fun setLastFmWifiOnly(v: Boolean) =
-        context.dataStore.edit { it[K.LASTFM_WIFI] = v }
     suspend fun saveRadioStation(station: RadioStation) = context.dataStore.edit { p ->
         val list = decodeStations(p[K.RADIO_STATIONS]).toMutableList()
         list.removeAll { it.id == station.id }
@@ -472,7 +597,25 @@ class PreferencesRepository(private val context: Context) {
         p[K.CROSSFADE] = state.crossfadeSec
         p[K.REPLAY_GAIN] = state.replayGainEnabled
         p[K.SLEEP_FADE] = state.sleepFadeOut
+        p[K.SUB_BASS] = state.subBassBoost
+        p[K.BASS_PUNCH] = state.bassPunch
     }
+
+    // v3.3 setters
+    suspend fun setEdgeLightingBeatReactive(v: Boolean) =
+        context.dataStore.edit { it[K.EDGE_BEAT] = v }
+    suspend fun setEdgeLightingSystemWide(v: Boolean) =
+        context.dataStore.edit { it[K.EDGE_SYS] = v }
+    suspend fun setEdgeLightingThickness(dp: Int) =
+        context.dataStore.edit { it[K.EDGE_THICK] = dp.coerceIn(2, 64) }
+    suspend fun setEdgeLightingIntensity(v: Float) =
+        context.dataStore.edit { it[K.EDGE_INT] = v.coerceIn(0f, 1f) }
+    suspend fun setEdgeLightingColorMode(v: String) =
+        context.dataStore.edit { it[K.EDGE_COLOR] = v }
+    suspend fun setFlashOnBeat(v: Boolean) =
+        context.dataStore.edit { it[K.FLASH_BEAT] = v }
+    suspend fun setVibrateOnBeat(v: Boolean) =
+        context.dataStore.edit { it[K.VIB_BEAT] = v }
 
     suspend fun setFavorites(ids: Set<String>) = context.dataStore.edit { p ->
         p[K.FAVORITES] = ids
@@ -703,4 +846,75 @@ class PreferencesRepository(private val context: Context) {
             if (presetName.isNullOrBlank()) map.remove(genre) else map[genre] = presetName
             p[K.GENRE_EQ] = encodeStringMap(map)
         }
+
+    // v3.4 — Big ship setters
+    suspend fun setPerSongEffects(songId: String, fx: EffectsState?) =
+        context.dataStore.edit { p ->
+            val m = decodePerSongEffects(p[K.PER_SONG_FX]).toMutableMap()
+            if (fx == null) m.remove(songId) else m[songId] = fx
+            p[K.PER_SONG_FX] = encodePerSongEffects(m)
+        }
+
+    suspend fun setSyncedLyricsEnabled(v: Boolean) =
+        context.dataStore.edit { it[K.SYNC_LYRICS] = v }
+
+    suspend fun setLyricsTranslateTo(code: String) =
+        context.dataStore.edit { it[K.LYR_TRANS] = code }
+
+    suspend fun setAutoCrossfadeByGenre(v: Boolean) =
+        context.dataStore.edit { it[K.AUTO_CROSS_GENRE] = v }
+
+    suspend fun setSmartSleepEnabled(v: Boolean) =
+        context.dataStore.edit { it[K.SMART_SLEEP] = v }
+
+    suspend fun setSmartSleepIdleMin(v: Int) =
+        context.dataStore.edit { it[K.SMART_SLEEP_IDLE] = v.coerceIn(1, 120) }
+
+    suspend fun setDailyGoalMinutes(v: Int) =
+        context.dataStore.edit { it[K.DAILY_GOAL] = v.coerceAtLeast(0) }
+
+    /**
+     * Record [minutesPlayed] additional minutes played today, advancing the
+     * streak counter if today's total newly crosses the daily goal.
+     */
+    suspend fun recordDailyPlayMinutes(minutesPlayed: Int) = context.dataStore.edit { p ->
+        if (minutesPlayed <= 0) return@edit
+        val today = (System.currentTimeMillis() / 86_400_000L)
+        val key = today.toString()
+        val map = decodeIntMap(p[K.DAILY_MINS]).toMutableMap()
+        val before = map[key] ?: 0
+        val after = before + minutesPlayed
+        map[key] = after
+        // Keep only the last 60 days for size.
+        val trimmed = map.entries.sortedByDescending { it.key.toLongOrNull() ?: 0L }.take(60)
+            .associate { it.key to it.value }
+        p[K.DAILY_MINS] = encodeIntMap(trimmed)
+        val goal = p[K.DAILY_GOAL] ?: 30
+        if (goal > 0 && before < goal && after >= goal) {
+            val lastDay = p[K.STREAK_LAST] ?: 0L
+            val days = p[K.STREAK_DAYS] ?: 0
+            p[K.STREAK_DAYS] = when {
+                lastDay == today -> days
+                lastDay == today - 1L -> days + 1
+                else -> 1 // streak resets to 1 on the first goal day
+            }
+            p[K.STREAK_LAST] = today
+        }
+    }
+
+    suspend fun setSleepSoundVolume(name: String, volume: Int) =
+        context.dataStore.edit { p ->
+            val m = decodeIntMap(p[K.SLEEP_SOUNDS]).toMutableMap()
+            if (volume <= 0) m.remove(name) else m[name] = volume.coerceIn(0, 100)
+            p[K.SLEEP_SOUNDS] = encodeIntMap(m)
+        }
+
+    suspend fun setVisualizerMode(mode: String) =
+        context.dataStore.edit { it[K.VIS_MODE] = mode }
+
+    suspend fun setDualOutputMirror(v: Boolean) =
+        context.dataStore.edit { it[K.DUAL_OUT] = v }
+
+    suspend fun setCastDeviceId(id: String) =
+        context.dataStore.edit { it[K.CAST_DEV] = id }
 }

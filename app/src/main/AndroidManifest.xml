@@ -9,6 +9,7 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -17,6 +18,11 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- v3.3 Beat Light & Bass -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:name=".MusicApp"
@@ -163,6 +169,16 @@
             </intent-filter>
         </service>
 
+        <!-- v3.3 system-wide beat-reactive edge lighting overlay. -->
+        <service
+            android:name=".effects.EdgeLightingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Beat-reactive screen edge lighting overlay" />
+        </service>
+
         <receiver
             android:name=".widget.PlayerWidgetProvider"
             android:exported="true">
@@ -172,6 +188,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
+        </receiver>
+
+        <!-- v3.4 - widget media-button click receiver -->
+        <receiver
+            android:name=".widget.WidgetActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.gsmtrick.musicplayer.widget.PLAY_PAUSE" />
+                <action android:name="com.gsmtrick.musicplayer.widget.PREV" />
+                <action android:name="com.gsmtrick.musicplayer.widget.NEXT" />
+            </intent-filter>
         </receiver>
 
         <service
@@ -185,9 +212,26 @@
             </intent-filter>
         </service>
 
+        <!-- v3.4 - Quick Settings Play/Pause tile -->
+        <service
+            android:name=".widget.PlayPauseTileService"
+            android:icon="@android:drawable/ic_media_play"
+            android:label="Music Play / Pause"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- v3.4 - Google Cast options provider -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.gsmtrick.musicplayer.cast.CastOptionsProvider" />
 
     </application>
 
