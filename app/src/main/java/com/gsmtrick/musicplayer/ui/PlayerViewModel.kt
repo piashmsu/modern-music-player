@@ -579,6 +579,30 @@ class PlayerViewModel(app: android.app.Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefsRepo.setEdgeLighting(v) }
     }
 
+    // v3.3 setters
+    fun setEdgeLightingBeatReactive(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingBeatReactive(v) }
+    fun setEdgeLightingSystemWide(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingSystemWide(v) }
+    fun setEdgeLightingThickness(dp: Int) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingThickness(dp) }
+    fun setEdgeLightingIntensity(v: Float) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingIntensity(v) }
+    fun setEdgeLightingColorMode(v: String) =
+        viewModelScope.launch { prefsRepo.setEdgeLightingColorMode(v) }
+    fun setFlashOnBeat(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setFlashOnBeat(v) }
+    fun setVibrateOnBeat(v: Boolean) =
+        viewModelScope.launch { prefsRepo.setVibrateOnBeat(v) }
+    fun setSubBassBoost(v: Int) {
+        val cur = _prefs.value.effects
+        viewModelScope.launch { prefsRepo.setEffects(cur.copy(subBassBoost = v.coerceIn(0, 1000))) }
+    }
+    fun setBassPunch(v: Int) {
+        val cur = _prefs.value.effects
+        viewModelScope.launch { prefsRepo.setEffects(cur.copy(bassPunch = v.coerceIn(0, 1000))) }
+    }
+
     fun setAnimatedWallpaper(v: Boolean) {
         viewModelScope.launch { prefsRepo.setAnimatedWallpaper(v) }
     }

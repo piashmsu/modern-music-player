@@ -33,6 +33,13 @@ data class EffectsState(
     val crossfadeSec: Int = 0, // 0..12
     val replayGainEnabled: Boolean = false,
     val sleepFadeOut: Boolean = true, // fade out at end of sleep timer
+    // v3.3 — Tactile Bass: software low-shelf on top of hardware BassBoost
+    // (0..1000). Adds extra +6..+12 dB of headroom in the 30-200 Hz band
+    // by lifting the lowest two equalizer bands.
+    val subBassBoost: Int = 0,
+    // v3.3 — Bass Punch: amplifies transient bass kicks via the loudness
+    // enhancer (0..1000). Stacks on top of [loudness].
+    val bassPunch: Int = 0,
 )
 
 data class AppPrefs(
@@ -114,6 +121,14 @@ data class AppPrefs(
     val lastRadioId: String = "",
     val tabOrder: List<String> = emptyList(), // empty -> use default tab order
     val autoTagFromFilename: Boolean = false,
+    // v3.3 — Beat Light & Bass
+    val edgeLightingBeatReactive: Boolean = true,
+    val edgeLightingSystemWide: Boolean = false, // requires SYSTEM_ALERT_WINDOW
+    val edgeLightingThicknessDp: Int = 12, // 4..32
+    val edgeLightingIntensity: Float = 0.8f, // 0f..1f
+    val edgeLightingColorMode: String = "rainbow", // rainbow | album | single
+    val flashOnBeat: Boolean = false, // strobe phone torch on bass kicks
+    val vibrateOnBeat: Boolean = false, // haptic pulse on bass kicks
 )
 
 data class Bookmark(val positionMs: Long, val label: String)
@@ -215,6 +230,16 @@ class PreferencesRepository(private val context: Context) {
         val LAST_RADIO = stringPreferencesKey("last_radio")
         val TAB_ORDER = stringPreferencesKey("tab_order") // CSV
         val AUTO_TAG = booleanPreferencesKey("auto_tag")
+        // v3.3 — Beat Light & Bass
+        val SUB_BASS = intPreferencesKey("sub_bass")
+        val BASS_PUNCH = intPreferencesKey("bass_punch")
+        val EDGE_BEAT = booleanPreferencesKey("edge_beat")
+        val EDGE_SYS = booleanPreferencesKey("edge_sys")
+        val EDGE_THICK = intPreferencesKey("edge_thick")
+        val EDGE_INT = floatPreferencesKey("edge_intensity")
+        val EDGE_COLOR = stringPreferencesKey("edge_color")
+        val FLASH_BEAT = booleanPreferencesKey("flash_beat")
+        val VIB_BEAT = booleanPreferencesKey("vib_beat")
     }
 
     val prefs: Flow<AppPrefs> = context.dataStore.data.map { it.toAppPrefs() }
@@ -253,6 +278,8 @@ class PreferencesRepository(private val context: Context) {
                 crossfadeSec = this[K.CROSSFADE] ?: 0,
                 replayGainEnabled = this[K.REPLAY_GAIN] ?: false,
                 sleepFadeOut = this[K.SLEEP_FADE] ?: true,
+                subBassBoost = this[K.SUB_BASS] ?: 0,
+                bassPunch = this[K.BASS_PUNCH] ?: 0,
             ),
             favorites = this[K.FAVORITES] ?: emptySet(),
             customEqPresets = decodePresets(this[K.CUSTOM_PRESETS]),
@@ -317,6 +344,13 @@ class PreferencesRepository(private val context: Context) {
             lastRadioId = this[K.LAST_RADIO] ?: "",
             tabOrder = (this[K.TAB_ORDER] ?: "").split(",").filter { it.isNotBlank() },
             autoTagFromFilename = this[K.AUTO_TAG] ?: false,
+            edgeLightingBeatReactive = this[K.EDGE_BEAT] ?: true,
+            edgeLightingSystemWide = this[K.EDGE_SYS] ?: false,
+            edgeLightingThicknessDp = this[K.EDGE_THICK] ?: 12,
+            edgeLightingIntensity = this[K.EDGE_INT] ?: 0.8f,
+            edgeLightingColorMode = this[K.EDGE_COLOR] ?: "rainbow",
+            flashOnBeat = this[K.FLASH_BEAT] ?: false,
+            vibrateOnBeat = this[K.VIB_BEAT] ?: false,
         )
     }
 
@@ -472,7 +506,25 @@ class PreferencesRepository(private val context: Context) {
         p[K.CROSSFADE] = state.crossfadeSec
         p[K.REPLAY_GAIN] = state.replayGainEnabled
         p[K.SLEEP_FADE] = state.sleepFadeOut
+        p[K.SUB_BASS] = state.subBassBoost
+        p[K.BASS_PUNCH] = state.bassPunch
     }
+
+    // v3.3 setters
+    suspend fun setEdgeLightingBeatReactive(v: Boolean) =
+        context.dataStore.edit { it[K.EDGE_BEAT] = v }
+    suspend fun setEdgeLightingSystemWide(v: Boolean) =
+        context.dataStore.edit { it[K.EDGE_SYS] = v }
+    suspend fun setEdgeLightingThickness(dp: Int) =
+        context.dataStore.edit { it[K.EDGE_THICK] = dp.coerceIn(2, 64) }
+    suspend fun setEdgeLightingIntensity(v: Float) =
+        context.dataStore.edit { it[K.EDGE_INT] = v.coerceIn(0f, 1f) }
+    suspend fun setEdgeLightingColorMode(v: String) =
+        context.dataStore.edit { it[K.EDGE_COLOR] = v }
+    suspend fun setFlashOnBeat(v: Boolean) =
+        context.dataStore.edit { it[K.FLASH_BEAT] = v }
+    suspend fun setVibrateOnBeat(v: Boolean) =
+        context.dataStore.edit { it[K.VIB_BEAT] = v }
 
     suspend fun setFavorites(ids: Set<String>) = context.dataStore.edit { p ->
         p[K.FAVORITES] = ids

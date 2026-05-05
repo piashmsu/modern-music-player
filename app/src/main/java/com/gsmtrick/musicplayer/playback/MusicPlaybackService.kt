@@ -25,6 +25,10 @@ import com.gsmtrick.musicplayer.data.MusicRepository
 import com.gsmtrick.musicplayer.data.PreferencesRepository
 import com.gsmtrick.musicplayer.data.Song
 import com.gsmtrick.musicplayer.effects.AudioEffectsController
+import com.gsmtrick.musicplayer.effects.BeatDetector
+import com.gsmtrick.musicplayer.effects.BeatHaptics
+import com.gsmtrick.musicplayer.effects.BeatStrobe
+import com.gsmtrick.musicplayer.effects.EdgeLightingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +46,9 @@ class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private val effects = AudioEffectsController()
+    private val beatDetector = BeatDetector()
+    private var beatStrobe: BeatStrobe? = null
+    private var beatHaptics: BeatHaptics? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var prefs: PreferencesRepository
 
@@ -127,6 +134,7 @@ class MusicPlaybackService : MediaSessionService() {
         exoPlayer.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 effects.attach(audioSessionId)
+                beatDetector.attach(audioSessionId)
                 publishAudioSessionId(audioSessionId)
                 scope.launch {
                     val state = prefs.prefs.map { it.effects }.distinctUntilChanged()
@@ -135,7 +143,34 @@ class MusicPlaybackService : MediaSessionService() {
             }
         })
         effects.attach(exoPlayer.audioSessionId)
+        beatDetector.attach(exoPlayer.audioSessionId)
         publishAudioSessionId(exoPlayer.audioSessionId)
+
+        beatStrobe = BeatStrobe(applicationContext)
+        beatHaptics = BeatHaptics(applicationContext)
+
+        // Drive the system-wide edge-lighting overlay service, beat strobe
+        // and beat haptics to mirror user preference + playback state.
+        scope.launch {
+            prefs.prefs.collectLatest { p ->
+                val isPlaying = exoPlayer.isPlaying
+                val wantOverlay = p.edgeLightingSystemWide && p.edgeLighting && isPlaying
+                EdgeLightingService.setRunning(applicationContext, wantOverlay)
+                if (p.flashOnBeat && isPlaying) beatStrobe?.start() else beatStrobe?.stop()
+                if (p.vibrateOnBeat && isPlaying) beatHaptics?.start() else beatHaptics?.stop()
+            }
+        }
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                scope.launch {
+                    val p = prefs.prefs.first()
+                    val wantOverlay = p.edgeLightingSystemWide && p.edgeLighting && isPlaying
+                    EdgeLightingService.setRunning(applicationContext, wantOverlay)
+                    if (p.flashOnBeat && isPlaying) beatStrobe?.start() else beatStrobe?.stop()
+                    if (p.vibrateOnBeat && isPlaying) beatHaptics?.start() else beatHaptics?.stop()
+                }
+            }
+        })
 
         scope.launch {
             prefs.prefs.collectLatest { p ->
@@ -427,6 +462,10 @@ class MusicPlaybackService : MediaSessionService() {
         runCatching { unregisterReceiver(screenReceiver) }
         scope.cancel()
         effects.release()
+        beatDetector.release()
+        beatStrobe?.stop()
+        beatHaptics?.stop()
+        EdgeLightingService.setRunning(applicationContext, false)
         mediaSession?.run {
             player.release()
             release()
