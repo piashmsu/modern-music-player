@@ -61,10 +61,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -360,6 +364,8 @@ private fun FullPlayer(
                         LyricsPanel(
                             lyrics = lyrics,
                             currentMs = state.positionMs,
+                            translateTo = prefs.lyricsTranslateTo,
+                            onSeek = { ms -> viewModel.seekTo(ms) },
                         )
                     }
                 }
@@ -371,6 +377,7 @@ private fun FullPlayer(
                         audioSessionId = sessionId.takeIf { it != 0 },
                         color = MaterialTheme.colorScheme.primary,
                         height = 60.dp,
+                        mode = prefs.visualizerMode,
                     )
                     Spacer(Modifier.height(12.dp))
                 }
@@ -598,6 +605,8 @@ private fun BookmarksDialog(
 private fun LyricsPanel(
     lyrics: com.gsmtrick.musicplayer.data.Lyrics?,
     currentMs: Long,
+    translateTo: String = "",
+    onSeek: (Long) -> Unit = {},
 ) {
     if (lyrics == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -612,22 +621,63 @@ private fun LyricsPanel(
         return
     }
     val activeIndex = lyrics.lineForPosition(currentMs)
+    val lines = lyrics.lines
+    // v3.4 — translate via ML Kit, on demand. Cache per (line, target).
+    val translations = remember(translateTo) {
+        mutableStateMapOf<Int, String>()
+    }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(translateTo, lyrics) {
+        translations.clear()
+        if (translateTo.isBlank() || lyrics.lines.isEmpty()) return@LaunchedEffect
+        scope.launch {
+            lyrics.lines.forEachIndexed { i, line ->
+                val out = com.gsmtrick.musicplayer.data.LyricsTranslator.translate(
+                    text = line.text,
+                    sourceLanguage = "en",
+                    targetLanguage = translateTo,
+                )
+                translations[i] = out
+            }
+        }
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
     ) {
-        itemsIndexed(lyrics.lines) { i, line ->
+        itemsIndexed(lines) { i, line ->
             val isActive = i == activeIndex
-            Text(
-                line.text,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isActive) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.padding(vertical = 4.dp),
-                textAlign = TextAlign.Center,
-            )
+            val tx = translations[i]
+            Column(
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .fillMaxWidth()
+                    .let { mod ->
+                        if (lyrics.isSynced) {
+                            mod.clickable { onSeek(line.timeMs) }
+                        } else mod
+                    },
+            ) {
+                Text(
+                    line.text,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isActive) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (!tx.isNullOrBlank() && tx != line.text) {
+                    Text(
+                        tx,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
         }
     }
 }

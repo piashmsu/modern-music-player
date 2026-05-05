@@ -62,24 +62,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pinDialog by remember { mutableStateOf(false) }
-    var lastFmDialog by remember { mutableStateOf(false) }
-
-    if (lastFmDialog) {
-        LastFmLoginDialog(
-            currentUser = prefs.lastfmUsername,
-            isLoggedIn = prefs.lastfmSessionKey.isNotEmpty(),
-            onDismiss = { lastFmDialog = false },
-            onLogout = { viewModel.clearLastFmSession(); lastFmDialog = false },
-            onLogin = { user, pass ->
-                scope.launch {
-                    val err = viewModel.lastFmLogin(user, pass)
-                    val msg = err ?: "Logged in to Last.fm as $user"
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    if (err == null) lastFmDialog = false
-                }
-            },
-        )
-    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -464,6 +446,135 @@ fun SettingsScreen(
             }
         }
         item {
+            SettingCard("v3.4 — Synced lyrics", "Karaoke-style highlight + tap to seek") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.syncedLyricsEnabled,
+                        onCheckedChange = { viewModel.setSyncedLyricsEnabled(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("v3.4 — Translate lyrics", "Pick a target language (offline ML Kit)") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            "" to "Off",
+                            "bn" to "BN",
+                            "en" to "EN",
+                            "hi" to "HI",
+                            "ar" to "AR",
+                            "ur" to "UR",
+                        ).forEach { (k, v) ->
+                            FilterChip(
+                                selected = prefs.lyricsTranslateTo == k,
+                                onClick = { viewModel.setLyricsTranslateTo(k) },
+                                label = { Text(v) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            SettingCard("v3.4 — Auto crossfade by genre", "Fast genres 1s, slow genres 5s") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.autoCrossfadeByGenre,
+                        onCheckedChange = { viewModel.setAutoCrossfadeByGenre(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard("v3.4 — Smart sleep", "Auto-fade when phone is still") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enable", modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = prefs.smartSleepEnabled,
+                            onCheckedChange = { viewModel.setSmartSleepEnabled(it) },
+                        )
+                    }
+                    Text("Idle timeout: ${prefs.smartSleepIdleMin} min")
+                    Slider(
+                        value = prefs.smartSleepIdleMin.toFloat(),
+                        onValueChange = { viewModel.setSmartSleepIdleMin(it.toInt()) },
+                        valueRange = 1f..30f,
+                        enabled = prefs.smartSleepEnabled,
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "v3.4 — Daily listening goal",
+                "${prefs.dailyGoalMinutes} min — streak: ${prefs.streakDays} day(s)",
+            ) {
+                Slider(
+                    value = prefs.dailyGoalMinutes.toFloat(),
+                    onValueChange = { viewModel.setDailyGoalMinutes(it.toInt()) },
+                    valueRange = 5f..180f,
+                )
+            }
+        }
+        item {
+            SettingCard("v3.4 — Visualizer mode", "Spectrum / waveform / particles / radial") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("bars", "spectrum", "waveform", "particles", "radial")
+                        .forEach { mode ->
+                            FilterChip(
+                                selected = prefs.visualizerMode == mode,
+                                onClick = { viewModel.setVisualizerMode(mode) },
+                                label = { Text(mode) },
+                            )
+                        }
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "v3.4 — Dual output mirror",
+                "Best-effort BT + speaker simultaneously (Android 9+)",
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Enable", modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = prefs.dualOutputMirror,
+                        onCheckedChange = { viewModel.setDualOutputMirror(it) },
+                    )
+                }
+            }
+        }
+        item {
+            SettingCard(
+                "v3.4 — Sleep sounds",
+                "Layer rain / ocean / brown / pink / white noise",
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "white" to "White",
+                        "pink" to "Pink",
+                        "brown" to "Brown",
+                        "ocean" to "Ocean",
+                        "rain" to "Rain",
+                        "fire" to "Fire",
+                    ).forEach { (k, name) ->
+                        val v = prefs.sleepSoundsVolumes[k] ?: 0
+                        Text("$name: $v%")
+                        Slider(
+                            value = v.toFloat(),
+                            onValueChange = { viewModel.setSleepSoundVolume(k, it.toInt()) },
+                            valueRange = 0f..100f,
+                        )
+                    }
+                }
+            }
+        }
+        item {
             SettingCard("Animated wallpaper", "Animated gradient behind library") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Enable", modifier = Modifier.weight(1f))
@@ -758,23 +869,7 @@ fun SettingsScreen(
                 }
             }
         }
-        item {
-            SettingCard("v3.2 — Last.fm scrobbling", if (prefs.lastfmSessionKey.isEmpty()) "Not connected" else "Logged in as ${prefs.lastfmUsername}") {
-                Column {
-                    SwitchRow("Enable scrobbling", prefs.lastfmEnabled && prefs.lastfmSessionKey.isNotEmpty()) { v ->
-                        viewModel.setLastFmEnabled(v)
-                    }
-                    SwitchRow("Wi-Fi only", prefs.lastfmScrobbleOverWifi) { viewModel.setLastFmWifiOnly(it) }
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { lastFmDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(if (prefs.lastfmSessionKey.isEmpty()) "Login to Last.fm" else "Manage Last.fm account")
-                    }
-                }
-            }
-        }
+
         item {
             SettingCard("v3.2 — Internet Radio", "${prefs.radioStations.size} saved stations + curated defaults") {
                 OutlinedButton(
@@ -891,57 +986,6 @@ private fun EdgeLightingSystemWideCard(
             }
         }
     }
-}
-
-@Composable
-private fun LastFmLoginDialog(
-    currentUser: String,
-    isLoggedIn: Boolean,
-    onDismiss: () -> Unit,
-    onLogout: () -> Unit,
-    onLogin: (String, String) -> Unit,
-) {
-    var user by remember { mutableStateOf(currentUser) }
-    var pass by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isLoggedIn) "Last.fm — manage" else "Last.fm — login") },
-        text = {
-            Column {
-                if (isLoggedIn) {
-                    Text("Logged in as $currentUser")
-                } else {
-                    Text("Enter your Last.fm username and password. They are sent only to last.fm to obtain a session token.")
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = user, onValueChange = { user = it.trim().take(40) },
-                    label = { Text("Username") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(), enabled = !isLoggedIn,
-                )
-                Spacer(Modifier.height(6.dp))
-                if (!isLoggedIn) {
-                    OutlinedTextField(
-                        value = pass, onValueChange = { pass = it.take(80) },
-                        label = { Text("Password") }, singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (isLoggedIn) {
-                TextButton(onClick = onLogout) { Text("Logout") }
-            } else {
-                TextButton(
-                    enabled = user.isNotBlank() && pass.isNotBlank(),
-                    onClick = { onLogin(user, pass); pass = "" },
-                ) { Text("Login") }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
 }
 
 @Composable

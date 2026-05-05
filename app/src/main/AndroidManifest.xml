@@ -190,6 +190,17 @@
                 android:resource="@xml/widget_info" />
         </receiver>
 
+        <!-- v3.4 - widget media-button click receiver -->
+        <receiver
+            android:name=".widget.WidgetActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.gsmtrick.musicplayer.widget.PLAY_PAUSE" />
+                <action android:name="com.gsmtrick.musicplayer.widget.PREV" />
+                <action android:name="com.gsmtrick.musicplayer.widget.NEXT" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".quicktile.EqualizerTileService"
             android:icon="@android:drawable/ic_media_play"
@@ -201,9 +212,26 @@
             </intent-filter>
         </service>
 
+        <!-- v3.4 - Quick Settings Play/Pause tile -->
+        <service
+            android:name=".widget.PlayPauseTileService"
+            android:icon="@android:drawable/ic_media_play"
+            android:label="Music Play / Pause"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- v3.4 - Google Cast options provider -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.gsmtrick.musicplayer.cast.CastOptionsProvider" />
 
     </application>
 

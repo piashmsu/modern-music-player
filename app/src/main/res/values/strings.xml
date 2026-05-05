@@ -96,9 +96,6 @@
     <string name="stats_top_artists">Top artists</string>
     <string name="stats_top_songs">Top songs</string>
     <!-- v3.2 -->
-    <string name="settings_lastfm">Last.fm scrobbling</string>
-    <string name="settings_lastfm_login">Login to Last.fm</string>
-    <string name="settings_lastfm_logout">Logout</string>
     <string name="settings_radio">Internet radio</string>
     <string name="settings_radio_open">Open radio</string>
     <string name="settings_bangla_numerals">Bangla numerals</string>

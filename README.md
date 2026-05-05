@@ -6,7 +6,7 @@ strings, EQ presets and number rendering all have first-class Bangla support
 — but it works equally well as a daily-driver player in any language.
 
 **Package:** `com.gsmtrick.musicplayer`
-**Latest version:** 3.3 (versionCode 9)
+**Latest version:** 3.4 (versionCode 10)
 **Min SDK:** 23 (Android 6.0)  •  **Target SDK:** 34 (Android 14)
 
 ---
@@ -34,8 +34,6 @@ strings, EQ presets and number rendering all have first-class Bangla support
 ### Online
 - YouTube tab (powered by NewPipeExtractor) — search & stream music
 - Internet Radio tab — curated Bangla / world stations + custom URLs
-- Last.fm scrobbling (configurable Wi-Fi-only, follows the standard
-  >=30 s / >=50 % rule)
 
 ### v3.3 — Beat Light & Bass
 - **Beat-reactive edge lighting** — the screen rim pulses to detected
@@ -84,14 +82,6 @@ Android Studio project. You will need:
 git clone https://github.com/piashmsu/modern-music-player.git
 cd modern-music-player
 
-# Optional: enable Last.fm scrobbling by adding your API credentials.
-# Without these the rest of the app still works — scrobbling is just
-# disabled gracefully at runtime.
-cat >> local.properties <<EOF
-lastfm.apiKey=<your last.fm api key>
-lastfm.apiSecret=<your last.fm api secret>
-EOF
-
 ./gradlew assembleDebug      # debug-signed APK in app/build/outputs/apk/debug/
 ./gradlew assembleRelease    # release APK (currently signed with the debug key)
 ```
@@ -115,11 +105,10 @@ adb install -r app/build/outputs/apk/release/app-release.apk
     class, JSON-encoded sub-fields for complex maps.
   - `PlaylistRepository` — user playlists.
   - `LyricsRepository` — local + online (caption-to-lyrics) loading.
-  - `LastFmRepository` — minimal mobile-session scrobbler.
 - **Playback** runs in `MusicPlaybackService` (a Media3 `MediaSessionService`).
   It owns the `ExoPlayer`, applies `EffectsState`, drives sleep-timer
-  fade-out, end-of-track crossfade, and Last.fm now-playing/scrobble
-  dispatch on a single 500 ms ticker coroutine.
+  fade-out and end-of-track crossfade on a single 500 ms ticker
+  coroutine.
 - **UI** is pure Jetpack Compose with Material 3. Navigation uses
   `androidx.navigation.compose` with five top-level routes: `library`,
   `youtube`, `effects`, `settings`, `about` (plus `stats` and `radio`).

@@ -16,12 +16,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 
 /**
  * Lightweight audio spectrum visualizer that latches onto the currently
@@ -34,6 +37,7 @@ fun AudioSpectrum(
     modifier: Modifier = Modifier,
     height: Dp = 96.dp,
     bars: Int = 48,
+    mode: String = "bars",
 ) {
     val magnitudes = remember { FloatArray(bars) }
     var version by remember { mutableStateOf(0) }
@@ -109,21 +113,125 @@ fun AudioSpectrum(
     ) {
         @Suppress("UNUSED_VARIABLE")
         val tick = version
-        val barWidth = size.width / bars
-        val gap = barWidth * 0.25f
-        val brush = Brush.verticalGradient(
-            colors = listOf(color.copy(alpha = 0.9f), color.copy(alpha = 0.4f)),
-        )
-        for (i in 0 until bars) {
-            val mag = magnitudes[i]
-            val h = mag * size.height
-            val x = i * barWidth + gap / 2
-            val y = size.height - h
-            drawRect(
-                brush = brush,
-                topLeft = Offset(x, y),
-                size = Size(barWidth - gap, min(h, size.height)),
-            )
+        when (mode) {
+            "spectrum" -> drawSpectrum(magnitudes, color)
+            "waveform" -> drawWaveform(magnitudes, color)
+            "particles" -> drawParticles(magnitudes, color)
+            "radial" -> drawRadial(magnitudes, color)
+            else -> drawBars(magnitudes, color)
         }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBars(
+    magnitudes: FloatArray, color: Color,
+) {
+    val bars = magnitudes.size
+    val barWidth = size.width / bars
+    val gap = barWidth * 0.25f
+    val brush = Brush.verticalGradient(
+        colors = listOf(color.copy(alpha = 0.9f), color.copy(alpha = 0.4f)),
+    )
+    for (i in 0 until bars) {
+        val mag = magnitudes[i]
+        val h = mag * size.height
+        val x = i * barWidth + gap / 2
+        val y = size.height - h
+        drawRect(
+            brush = brush,
+            topLeft = Offset(x, y),
+            size = Size(barWidth - gap, min(h, size.height)),
+        )
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSpectrum(
+    magnitudes: FloatArray, color: Color,
+) {
+    val bars = magnitudes.size
+    val barWidth = size.width / bars
+    for (i in 0 until bars) {
+        val mag = magnitudes[i]
+        val h = mag * size.height
+        val mid = size.height / 2f
+        val brush = Brush.horizontalGradient(
+            colors = listOf(color.copy(alpha = 0.85f), color.copy(alpha = 0.25f)),
+            startX = 0f, endX = size.width,
+        )
+        drawRect(
+            brush = brush,
+            topLeft = Offset(i * barWidth, mid - h / 2f),
+            size = Size(barWidth - 1f, h.coerceAtLeast(1f)),
+        )
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWaveform(
+    magnitudes: FloatArray, color: Color,
+) {
+    val n = magnitudes.size
+    if (n < 2) return
+    val mid = size.height / 2f
+    val step = size.width / (n - 1)
+    val path = Path().apply {
+        moveTo(0f, mid - magnitudes[0] * mid)
+        for (i in 1 until n) {
+            lineTo(i * step, mid - magnitudes[i] * mid * if (i % 2 == 0) 1f else -1f)
+        }
+    }
+    drawPath(
+        path,
+        brush = Brush.horizontalGradient(
+            listOf(color.copy(alpha = 0.6f), color, color.copy(alpha = 0.6f)),
+        ),
+        alpha = 0.9f,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f),
+    )
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawParticles(
+    magnitudes: FloatArray, color: Color,
+) {
+    val n = magnitudes.size
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val maxR = min(size.width, size.height) / 2f * 0.95f
+    for (i in 0 until n) {
+        val angle = (i.toDouble() / n) * 2.0 * Math.PI
+        val mag = magnitudes[i]
+        val r = (0.2f + 0.8f * mag) * maxR
+        val px = cx + (r * cos(angle)).toFloat()
+        val py = cy + (r * sin(angle)).toFloat()
+        drawCircle(
+            color = color.copy(alpha = (0.3f + 0.7f * mag).coerceIn(0f, 1f)),
+            radius = 2f + mag * 6f,
+            center = Offset(px, py),
+        )
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRadial(
+    magnitudes: FloatArray, color: Color,
+) {
+    val n = magnitudes.size
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val baseR = min(size.width, size.height) / 2f * 0.4f
+    val maxR = min(size.width, size.height) / 2f * 0.95f
+    for (i in 0 until n) {
+        val angle = (i.toDouble() / n) * 2.0 * Math.PI
+        val mag = magnitudes[i]
+        val r0 = baseR
+        val r1 = baseR + (maxR - baseR) * mag
+        val ax = cx + (r0 * cos(angle)).toFloat()
+        val ay = cy + (r0 * sin(angle)).toFloat()
+        val bx = cx + (r1 * cos(angle)).toFloat()
+        val by = cy + (r1 * sin(angle)).toFloat()
+        drawLine(
+            color = color.copy(alpha = (0.3f + 0.7f * mag).coerceIn(0f, 1f)),
+            start = Offset(ax, ay),
+            end = Offset(bx, by),
+            strokeWidth = 3f,
+        )
     }
 }

@@ -39,13 +39,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build debug APK
-        env:
-          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Build release APK (unsigned)
-        env:
-          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload debug APK
